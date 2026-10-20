@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 class UnitConverterScreen extends StatefulWidget {
-  const UnitConverterScreen({Key? key}) : super(key: key);
+  final bool showAppBar;
+  const UnitConverterScreen({super.key, this.showAppBar = true});
 
   @override
   State<UnitConverterScreen> createState() => _UnitConverterScreenState();
@@ -29,9 +30,12 @@ class _UnitConverterScreenState extends State<UnitConverterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chuyển đổi đơn vị đo'),
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('Chuyển đổi đơn vị đo'),
+              backgroundColor: Colors.deepOrange,
+            )
+          : null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

@@ -16,12 +16,16 @@ class _YouTubePlayerScreenState extends State<YouTubePlayerScreen> {
     final link = _linkController.text.trim();
     if (link.isEmpty) return;
 
-    final id = YoutubePlayerController.convertUrlToId(link);
+    String? id = YoutubePlayerController.convertUrlToId(link);
+    if (id == null && link.length == 11 && !link.contains('/')) {
+      id = link;
+    }
     if (id != null) {
+      final videoId = id;
       setState(() {
         if (_controller == null) {
           _controller = YoutubePlayerController.fromVideoId(
-            videoId: id,
+            videoId: videoId,
             autoPlay: true,
             params: const YoutubePlayerParams(
               showControls: true,
@@ -30,7 +34,7 @@ class _YouTubePlayerScreenState extends State<YouTubePlayerScreen> {
             ),
           );
         } else {
-          _controller!.loadVideoById(videoId: id);
+          _controller!.loadVideoById(videoId: videoId);
         }
       });
     } else {

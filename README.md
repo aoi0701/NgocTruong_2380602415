@@ -1,6 +1,6 @@
-# tuan
+# NgocTruong_2380602415
 
-A new Flutter project.
+Đồ án Lập trình di động - Flutter Application.
 
 ## Getting Started
 

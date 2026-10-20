@@ -15,7 +15,7 @@ class GroupInfoScreen extends StatelessWidget {
     {
       'name': 'Nguyễn Phan Ngọc Trưởng',
       'id': 'Thành viên nhóm',
-      'phone': 'Đang cập nhật',
+      'phone': '0337474099',
       'image': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSGQr4vSTzTPnM6JMqYxvsP9xS8wSvjcw8kMw&s'
     },
     {
@@ -39,8 +39,14 @@ class GroupInfoScreen extends StatelessWidget {
       scheme: 'tel',
       path: phoneNumber,
     );
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Error launching call: $e');
     }
   }
 

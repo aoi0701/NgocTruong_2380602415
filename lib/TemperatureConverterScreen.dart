@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 class TemperatureConverterScreen extends StatefulWidget {
-  const TemperatureConverterScreen({super.key});
+  final bool showAppBar;
+  const TemperatureConverterScreen({super.key, this.showAppBar = true});
 
   @override
   State<TemperatureConverterScreen> createState() =>
@@ -31,9 +32,12 @@ class _TemperatureConverterScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chuyển đổi nhiệt độ'),
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('Chuyển đổi nhiệt độ'),
+              backgroundColor: Colors.deepOrange,
+            )
+          : null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
