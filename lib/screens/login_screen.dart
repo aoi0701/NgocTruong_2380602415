@@ -3,6 +3,7 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/auth.dart';
 import 'admin_screen.dart';
+import 'staff_screen.dart';
 import 'main_screen.dart';
 import 'registration_screen.dart';
 
@@ -16,7 +17,9 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
   bool _isLoading = false;
+  bool _isSendingOtp = false;
   bool _obscurePassword = true;
 
   @override
@@ -29,10 +32,11 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
-  // Khắc phục triệt để lỗi tài khoản Admin bị vào nhầm trang User khi tự động đăng nhập lại
+  // Khắc phục triệt để lỗi phân quyền: Admin -> AdminScreen, Staff -> StaffScreen, User -> MainScreen
   Future<void> _checkToken() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -57,11 +61,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
           if (!mounted) return;
 
-          // Điều hướng đúng vai trò tương ứng
-          if (role != null && role.toLowerCase() == 'admin') {
+          final normalized = role?.toLowerCase() ?? '';
+          if (normalized == 'admin') {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const AdminScreen()),
+            );
+          } else if (normalized == 'staff' || normalized == 'nhanvien') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const StaffScreen()),
             );
           } else {
             Navigator.pushReplacement(
@@ -79,15 +88,46 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Gửi hoặc lấy mã OTP
+  Future<void> _handleRequestOtp() async {
+    final username = _usernameController.text.trim();
+    if (username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập Tên đăng nhập hoặc Email trước để nhận mã OTP'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSendingOtp = true);
+    final result = await Auth.requestOtp(username);
+    if (!mounted) return;
+    setState(() => _isSendingOtp = false);
+
+    final otp = result['otp']?.toString() ?? '123456';
+    _otpController.text = otp;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Mã OTP của bạn: $otp (Đã tự động điền)'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   // Xử lý khi nhấn nút Đăng nhập
   Future<void> _handleLogin() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
+    final otp = _otpController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập đầy đủ thông tin'),
+          content: Text('Vui lòng nhập tên đăng nhập và mật khẩu'),
           backgroundColor: Colors.red,
         ),
       );
@@ -97,19 +137,25 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final result = await Auth.login(username, password);
+      final result = await Auth.login(username, password, otp: otp);
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       if (result['success'] == true) {
         // Lấy vai trò người dùng sau khi giải mã token thành công
         final String role = (result['role'] ?? 'User').toString();
+        final normalized = role.toLowerCase();
 
-        // Khắc phục triệt để lỗi đăng nhập Admin bị chuyển vào trang User
-        if (role.toLowerCase() == 'admin') {
+        // Phân quyền chuẩn xác 3 luồng: Admin, Staff, User
+        if (normalized == 'admin') {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const AdminScreen()),
+          );
+        } else if (normalized == 'staff' || normalized == 'nhanvien') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const StaffScreen()),
           );
         } else {
           Navigator.pushReplacement(
@@ -148,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Column(
               children: [
-                const SizedBox(height: 60),
+                const SizedBox(height: 50),
                 // Logo Facebook theo mẫu tài liệu Tuần 7
                 Text(
                   'facebook',
@@ -160,14 +206,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     letterSpacing: -1.5,
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 35),
 
-                // Trường nhập số điện thoại hoặc email
+                // 1. Trường nhập số điện thoại hoặc email
                 TextField(
                   controller: _usernameController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     hintText: 'Số điện thoại hoặc email',
+                    prefixIcon: const Icon(Icons.person_outline),
                     filled: true,
                     fillColor: Colors.grey[100],
                     border: OutlineInputBorder(
@@ -182,12 +229,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Trường nhập mật khẩu
+                // 2. Trường nhập mật khẩu
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: 'Mật khẩu',
+                    prefixIcon: const Icon(Icons.lock_outline),
                     filled: true,
                     fillColor: Colors.grey[100],
                     border: OutlineInputBorder(
@@ -208,6 +256,54 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
                   ),
+                ),
+                const SizedBox(height: 12),
+
+                // 3. Trường nhập mã OTP (Xác thực 2 lớp)
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _otpController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          hintText: 'Mã xác thực OTP (VD: 123456)',
+                          prefixIcon: const Icon(Icons.security_rounded),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: _isSendingOtp ? null : _handleRequestOtp,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.blue[700],
+                          side: BorderSide(color: Colors.blue[700]!),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _isSendingOtp
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Gửi OTP'),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
 

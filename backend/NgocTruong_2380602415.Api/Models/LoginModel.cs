@@ -9,4 +9,9 @@ public class LoginModel
 
     [Required]
     public string Password { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Mã OTP xác thực đăng nhập (hỗ trợ xác thực 2 lớp)
+    /// </summary>
+    public string? Otp { get; set; }
 }

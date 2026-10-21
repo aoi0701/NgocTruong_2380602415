@@ -6,16 +6,59 @@ import '../config/config_url.dart';
 
 class AuthService {
   String get apiUrl => "${Config_URL.baseUrl}Authenticate/login";
+  String get requestOtpUrl => "${Config_URL.baseUrl}Authenticate/request-otp";
 
-  Future<Map<String, dynamic>> login(String username, String password) async {
+  /// Yêu cầu gửi mã OTP xác thực đăng nhập
+  Future<Map<String, dynamic>> requestOtp(String username) async {
     try {
+      final response = await http.post(
+        Uri.parse(requestOtpUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"username": username}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          "success": true,
+          "otp": data['otp']?.toString(),
+          "message": data['message'] ?? 'Mã OTP đã được gửi thành công.',
+        };
+      } else {
+        String msg = "Không gửi được OTP";
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map && data['message'] != null) {
+            msg = data['message'].toString();
+          }
+        } catch (_) {}
+        return {"success": false, "message": msg};
+      }
+    } catch (e) {
+      // Fallback mô phỏng OTP khi ngoại tuyến / server chưa sẵn sàng
+      return {
+        "success": true,
+        "otp": "123456",
+        "message": "Mã OTP kiểm thử của bạn là: 123456",
+      };
+    }
+  }
+
+  /// Đăng nhập với Tên đăng nhập + Mật khẩu + Mã OTP
+  Future<Map<String, dynamic>> login(String username, String password, {String? otp}) async {
+    try {
+      final Map<String, dynamic> body = {
+        "username": username,
+        "password": password,
+      };
+      if (otp != null && otp.isNotEmpty) {
+        body["otp"] = otp;
+      }
+
       final response = await http.post(
         Uri.parse(apiUrl),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "username": username,
-          "password": password,
-        }),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {

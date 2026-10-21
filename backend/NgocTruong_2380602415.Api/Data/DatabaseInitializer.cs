@@ -31,7 +31,7 @@ public static class DatabaseInitializer
             await db.Database.EnsureCreatedAsync(cancellationToken);
         }
 
-        var roles = new[] { "Admin", "User" };
+        var roles = new[] { "Admin", "User", "Staff" };
         foreach (var role in roles)
         {
             if (!await roleManager.RoleExistsAsync(role))
@@ -55,6 +55,24 @@ public static class DatabaseInitializer
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(adminUser, "Admin");
+            }
+        }
+
+        const string staffUserName = "staff";
+        var staffUser = await userManager.FindByNameAsync(staffUserName);
+        if (staffUser == null)
+        {
+            staffUser = new User
+            {
+                UserName = staffUserName,
+                Email = "staff@example.com",
+                Initials = "STF",
+                EmailConfirmed = true
+            };
+            var result = await userManager.CreateAsync(staffUser, "Staff@123456");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(staffUser, "Staff");
             }
         }
 

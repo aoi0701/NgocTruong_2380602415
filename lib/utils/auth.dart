@@ -8,9 +8,14 @@ class Auth {
   static final AuthService _authService = AuthService();
   static final ApiClient _apiClient = ApiClient();
 
-  // Đăng nhập
-  static Future<Map<String, dynamic>> login(String username, String password) async {
-    final result = await _authService.login(username, password);
+  // Yêu cầu gửi OTP
+  static Future<Map<String, dynamic>> requestOtp(String username) async {
+    return await _authService.requestOtp(username);
+  }
+
+  // Đăng nhập có hỗ trợ mã OTP
+  static Future<Map<String, dynamic>> login(String username, String password, {String? otp}) async {
+    final result = await _authService.login(username, password, otp: otp);
     return result;
   }
 

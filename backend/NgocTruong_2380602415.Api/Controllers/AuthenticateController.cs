@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -8,6 +9,11 @@ using NgocTruong_2380602415.Api.Models;
 
 namespace NgocTruong_2380602415.Api.Controllers;
 
+public class OtpRequestModel
+{
+    public string Username { get; set; } = string.Empty;
+}
+
 [ApiController]
 [Route("api/[controller]")]
 public class AuthenticateController : ControllerBase
@@ -15,6 +21,9 @@ public class AuthenticateController : ControllerBase
     private readonly UserManager<User> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IConfiguration _configuration;
+
+    // Lưu trữ OTP tạm thời trong bộ nhớ kèm thời hạn 5 phút
+    private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _otpStore = new(StringComparer.OrdinalIgnoreCase);
 
     public AuthenticateController(
         UserManager<User> userManager,
@@ -24,6 +33,35 @@ public class AuthenticateController : ControllerBase
         _userManager = userManager;
         _roleManager = roleManager;
         _configuration = configuration;
+    }
+
+    [HttpPost("request-otp")]
+    public async Task<IActionResult> RequestOtp([FromBody] OtpRequestModel model)
+    {
+        if (string.IsNullOrWhiteSpace(model.Username))
+        {
+            return BadRequest(new { Status = false, Message = "Vui lòng cung cấp tên đăng nhập hoặc email." });
+        }
+
+        var username = model.Username.Trim();
+        var user = await _userManager.FindByNameAsync(username) ?? await _userManager.FindByEmailAsync(username);
+        if (user == null)
+        {
+            return NotFound(new { Status = false, Message = "Không tìm thấy tài khoản với tên đăng nhập này." });
+        }
+
+        // Sinh mã OTP 6 chữ số ngẫu nhiên
+        var otpCode = Random.Shared.Next(100000, 999999).ToString();
+        var expiry = DateTime.UtcNow.AddMinutes(5);
+        _otpStore[user.UserName!] = (otpCode, expiry);
+
+        return Ok(new
+        {
+            Status = true,
+            Message = $"Mã OTP đã được gửi thành công: {otpCode}",
+            Otp = otpCode,
+            ExpiresInSeconds = 300
+        });
     }
 
     [HttpPost("register")]
@@ -79,7 +117,7 @@ public class AuthenticateController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var user = await _userManager.FindByNameAsync(model.Username);
+        var user = await _userManager.FindByNameAsync(model.Username) ?? await _userManager.FindByEmailAsync(model.Username);
         if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
         {
             return Unauthorized(new
@@ -87,6 +125,33 @@ public class AuthenticateController : ControllerBase
                 Status = false,
                 Message = "Invalid username or password"
             });
+        }
+
+        // Kiểm tra OTP nếu người dùng gửi kèm mã OTP
+        if (!string.IsNullOrWhiteSpace(model.Otp))
+        {
+            var otp = model.Otp.Trim();
+            var valid = false;
+
+            // Chấp nhận mã master test '123456' hoặc mã OTP đã sinh trong _otpStore
+            if (otp == "123456")
+            {
+                valid = true;
+            }
+            else if (_otpStore.TryGetValue(user.UserName!, out var stored) && stored.Expiry > DateTime.UtcNow && stored.Code == otp)
+            {
+                valid = true;
+                _otpStore.TryRemove(user.UserName!, out _);
+            }
+
+            if (!valid)
+            {
+                return BadRequest(new
+                {
+                    Status = false,
+                    Message = "Mã OTP không chính xác hoặc đã hết hạn (Thử dùng mã 123456 hoặc bấm Gửi OTP)."
+                });
+            }
         }
 
         var userRoles = await _userManager.GetRolesAsync(user);

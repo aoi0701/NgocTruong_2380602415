@@ -116,8 +116,8 @@ class _PracticeHubScreen extends StatelessWidget {
             // Card 1: Tuần 7 - Xác thực & Phân quyền
             _buildActionCard(
               context,
-              title: 'Tuần 7: Xác thực & Phân quyền',
-              subtitle: 'Đăng ký, Đăng nhập JWT, Tự động đăng nhập đúng Role (Admin/User), SmartAuth, Quản lý Danh mục.',
+              title: 'Tuần 7: Xác thực & Phân quyền 3 vai trò',
+              subtitle: 'Đăng ký Email, Đăng nhập OTP, Phân quyền chuẩn xác (Admin / Nhân viên / Khách hàng), SmartAuth, Quản lý Danh mục.',
               icon: Icons.security_rounded,
               color: Colors.blue[700]!,
               onTap: () {

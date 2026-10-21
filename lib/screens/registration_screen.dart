@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smart_auth/smart_auth.dart';
-import '../utils/auth.dart';  
+import '../utils/auth.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -301,9 +301,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Vai trò (Role selection: User / Admin)
+                // Vai trò (Role selection: User / Staff / Admin)
                 DropdownButtonFormField<String>(
-                  value: ['User', 'Admin'].contains(_roleController.text)
+                  value: ['User', 'Staff', 'Admin'].contains(_roleController.text)
                       ? _roleController.text
                       : 'User',
                   decoration: InputDecoration(
@@ -322,11 +322,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   items: const [
                     DropdownMenuItem(
                       value: 'User',
-                      child: Text('User (Người dùng thông thường)'),
+                      child: Text('Khách hàng / Sinh viên (User)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Staff',
+                      child: Text('Nhân viên vận hành (Staff)'),
                     ),
                     DropdownMenuItem(
                       value: 'Admin',
-                      child: Text('Admin (Quản trị viên)'),
+                      child: Text('Quản trị viên hệ thống (Admin)'),
                     ),
                   ],
                   onChanged: (val) {

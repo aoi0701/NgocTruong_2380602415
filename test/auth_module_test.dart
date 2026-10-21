@@ -7,6 +7,7 @@ import 'package:Nhom_3_nguoi/utils/auth.dart';
 import 'package:Nhom_3_nguoi/screens/login_screen.dart';
 import 'package:Nhom_3_nguoi/screens/registration_screen.dart';
 import 'package:Nhom_3_nguoi/screens/admin_screen.dart';
+import 'package:Nhom_3_nguoi/screens/staff_screen.dart';
 import 'package:Nhom_3_nguoi/screens/main_screen.dart';
 
 void main() {
@@ -36,7 +37,7 @@ void main() {
       expect(await Auth.getToken(), isNull);
     });
 
-    testWidgets('LoginScreen renders Facebook branding and form', (tester) async {
+    testWidgets('LoginScreen renders Facebook branding, form, and OTP verification', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: LoginScreen(),
@@ -47,11 +48,12 @@ void main() {
       expect(find.text('facebook'), findsOneWidget);
       expect(find.text('Số điện thoại hoặc email'), findsOneWidget);
       expect(find.text('Mật khẩu'), findsOneWidget);
+      expect(find.text('Gửi OTP'), findsOneWidget);
       expect(find.text('Đăng nhập'), findsOneWidget);
       expect(find.text('Đăng ký ngay'), findsOneWidget);
     });
 
-    testWidgets('RegistrationScreen renders registration fields', (tester) async {
+    testWidgets('RegistrationScreen renders registration fields and 3 roles', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: RegistrationScreen(),
@@ -77,6 +79,18 @@ void main() {
 
       expect(find.text('Admin Dashboard'), findsOneWidget);
       expect(find.text('Quản lý Danh mục sản phẩm (CRUD)'), findsOneWidget);
+    });
+
+    testWidgets('StaffScreen renders Staff Dashboard', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StaffScreen(),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Dashboard Nhân Viên'), findsOneWidget);
+      expect(find.text('Khu vực tác nghiệp nhân viên'), findsOneWidget);
     });
 
     testWidgets('MainScreen renders User Welcome and feature cards', (tester) async {
