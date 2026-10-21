@@ -29,9 +29,8 @@ class AttendanceService {
   AttendanceService({ApiClient? apiClient})
     : _apiClient = apiClient ?? ApiClient();
 
-  // Singleton instance
-  static final AttendanceService _instance = AttendanceService();
-  static AttendanceService get instance => _instance;
+  // Singleton instance (mutable for test mocks)
+  static AttendanceService instance = AttendanceService();
 
   // Helper để lấy token
   static Future<String?> getToken() async {
@@ -441,6 +440,186 @@ class AttendanceService {
       return AttendanceResult(
         success: false,
         message: 'Lỗi máy chủ khi cập nhật vai trò: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Admin tạo tài khoản nhân viên mới: POST /api/Admin/employees
+  Future<AttendanceResult> createEmployee({
+    required String username,
+    required String email,
+    required String password,
+    required String role,
+  }) async {
+    final Map<String, dynamic> body = {
+      'username': username.trim(),
+      'email': email.trim(),
+      'password': password,
+      'role': role,
+    };
+
+    try {
+      final response = await _apiClient.post('Admin/employees', body: body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        dynamic decoded;
+        try {
+          decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        } catch (_) {
+          decoded = null;
+        }
+
+        String message = 'Tạo tài khoản nhân viên thành công!';
+        if (decoded is Map<String, dynamic> && decoded['message'] != null) {
+          message = decoded['message'].toString();
+        }
+
+        return AttendanceResult(
+          success: true,
+          message: message,
+          statusCode: response.statusCode,
+        );
+      } else {
+        String msg = 'Tạo tài khoản thất bại (Mã lỗi ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            msg =
+                decoded['message'] ??
+                decoded['error'] ??
+                decoded['title'] ??
+                msg;
+          }
+        } catch (_) {}
+
+        return AttendanceResult(
+          success: false,
+          message: msg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi máy chủ khi tạo tài khoản: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Admin cập nhật tài khoản nhân viên: PUT /api/Admin/employees/{userId}
+  Future<AttendanceResult> updateEmployee({
+    required String employeeId,
+    required String username,
+    required String email,
+    required String role,
+  }) async {
+    final Map<String, dynamic> body = {
+      'username': username.trim(),
+      'email': email.trim(),
+      'role': role,
+    };
+
+    try {
+      final response = await _apiClient.put(
+        'Admin/employees/$employeeId',
+        body: body,
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        dynamic decoded;
+        try {
+          decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        } catch (_) {
+          decoded = null;
+        }
+
+        String message = 'Cập nhật tài khoản nhân viên thành công!';
+        if (decoded is Map<String, dynamic> && decoded['message'] != null) {
+          message = decoded['message'].toString();
+        }
+
+        return AttendanceResult(
+          success: true,
+          message: message,
+          statusCode: response.statusCode,
+        );
+      } else {
+        String msg =
+            'Cập nhật tài khoản thất bại (Mã lỗi ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            msg =
+                decoded['message'] ??
+                decoded['error'] ??
+                decoded['title'] ??
+                msg;
+          }
+        } catch (_) {}
+
+        return AttendanceResult(
+          success: false,
+          message: msg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi máy chủ khi cập nhật tài khoản: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Admin xóa tài khoản nhân viên: DELETE /api/Admin/employees/{userId}
+  Future<AttendanceResult> deleteEmployee(String employeeId) async {
+    try {
+      final response = await _apiClient.delete('Admin/employees/$employeeId');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        dynamic decoded;
+        try {
+          decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        } catch (_) {
+          decoded = null;
+        }
+
+        String message = 'Đã xóa tài khoản nhân viên thành công!';
+        if (decoded is Map<String, dynamic> && decoded['message'] != null) {
+          message = decoded['message'].toString();
+        }
+
+        return AttendanceResult(
+          success: true,
+          message: message,
+          statusCode: response.statusCode,
+        );
+      } else {
+        String msg = 'Xóa tài khoản thất bại (Mã lỗi ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            msg =
+                decoded['message'] ??
+                decoded['error'] ??
+                decoded['title'] ??
+                msg;
+          }
+        } catch (_) {}
+
+        return AttendanceResult(
+          success: false,
+          message: msg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi máy chủ khi xóa tài khoản: $e',
         statusCode: 500,
       );
     }

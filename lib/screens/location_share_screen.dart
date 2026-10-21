@@ -4,9 +4,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/attendance_service.dart';
-import '../widgets/post_shift_feedback_dialog.dart';
 
 class LocationShareScreen extends StatefulWidget {
   const LocationShareScreen({super.key});
@@ -16,18 +15,15 @@ class LocationShareScreen extends StatefulWidget {
 }
 
 class _LocationShareScreenState extends State<LocationShareScreen> {
-  // Tọa độ chuẩn của Trường Đại học HUTECH Campus E1 (Khu Công nghệ cao TP.HCM)
-  static const double companyLat = 10.8552;
-  static const double companyLng = 106.7856;
-  static const String companyName = 'HUTECH Campus E1 (Khu Công Nghệ Cao)';
+  // Tọa độ mặc định khi chưa có GPS (TP.HCM)
+  static const double defaultLat = 10.8231;
+  static const double defaultLng = 106.6297;
 
   final MapController _mapController = MapController();
   Position? _currentPosition;
   String _address = 'Đang chờ lấy vị trí GPS thực tế...';
   String? _errorMessage;
-  double? _distanceToCompany;
   bool _isLoading = false;
-  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -63,7 +59,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
             setState(() {
               _isLoading = false;
               _currentPosition = null;
-              _errorMessage = 'Quyền truy cập vị trí bị từ chối. Vui lòng cấp quyền để thực hiện chấm công.';
+              _errorMessage = 'Quyền truy cập vị trí bị từ chối. Vui lòng cấp quyền để sử dụng chức năng này.';
               _address = 'Chưa thể xác định vị trí';
             });
           }
@@ -87,13 +83,6 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
-      final distance = Geolocator.distanceBetween(
-        position.latitude,
-        position.longitude,
-        companyLat,
-        companyLng,
-      );
-
       String detailedAddress = 'Lat: ${position.latitude.toStringAsFixed(5)}, Lng: ${position.longitude.toStringAsFixed(5)}';
       try {
         final placemarks = await Geocoding().placemarkFromCoordinates(position.latitude, position.longitude);
@@ -112,7 +101,6 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
       if (mounted) {
         setState(() {
           _currentPosition = position;
-          _distanceToCompany = distance;
           _address = detailedAddress;
           _isLoading = false;
           _errorMessage = null;
@@ -123,7 +111,6 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
       if (mounted) {
         setState(() {
           _currentPosition = null;
-          _distanceToCompany = null;
           _errorMessage = 'Lỗi lấy tọa độ GPS thực tế: $e\nVui lòng kiểm tra kết nối mạng và thiết bị GPS.';
           _address = 'Lỗi định vị';
           _isLoading = false;
@@ -136,7 +123,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
     if (_currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Chưa có tọa độ GPS để chia sẻ. Vui lòng lấy vị trí trước.'),
+          content: Text('Vui lòng lấy vị trí hiện tại trước khi chia sẻ'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -146,273 +133,79 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
     final lat = _currentPosition!.latitude;
     final lng = _currentPosition!.longitude;
     final mapUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
-    final shareText = '📍 Vị trí GPS của tôi tại HUTECH: $mapUrl\nĐịa chỉ: $_address';
-
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Chia sẻ Vị trí GPS',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Tọa độ: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.map, color: Colors.white),
-                ),
-                title: const Text('Mở trên ứng dụng Google Maps'),
-                subtitle: const Text('Mở chỉ đường và hiển thị vị trí trên bản đồ Google'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final uri = Uri.parse(mapUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  } else {
-                    Clipboard.setData(ClipboardData(text: mapUrl));
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Không thể mở ứng dụng bản đồ, đã sao chép link')),
-                      );
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.teal,
-                  child: Icon(Icons.copy, color: Colors.white),
-                ),
-                title: const Text('Sao chép liên kết Google Maps'),
-                subtitle: const Text('Lưu link bản đồ vào bộ nhớ tạm'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Clipboard.setData(ClipboardData(text: mapUrl));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Đã sao chép liên kết Google Maps vào bộ nhớ tạm!'),
-                      backgroundColor: Colors.teal,
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.deepOrange,
-                  child: Icon(Icons.share, color: Colors.white),
-                ),
-                title: const Text('Sao chép thông tin chi tiết vị trí'),
-                subtitle: const Text('Bao gồm địa chỉ, tọa độ và link liên kết'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Clipboard.setData(ClipboardData(text: shareText));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Đã sao chép thông tin vị trí vào bộ nhớ tạm!'),
-                      backgroundColor: Colors.deepOrange,
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleGpsAttendance({required bool isCheckIn}) async {
-    if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Chưa có tọa độ GPS hợp lệ. Vui lòng bấm làm mới vị trí trước khi chấm công.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
+    final shareText = 'Vị trí hiện tại của tôi\n$mapUrl';
 
     try {
-      final AttendanceResult result;
-      if (isCheckIn) {
-        result = await AttendanceService.instance.checkIn(
-          method: 'GPS',
-          latitude: _currentPosition!.latitude,
-          longitude: _currentPosition!.longitude,
-          locationName: _address,
-          notes: _distanceToCompany != null
-              ? 'GPS cách HUTECH Campus E1 ${_distanceToCompany!.toStringAsFixed(1)}m'
-              : 'GPS thực tế',
-        );
-      } else {
-        result = await AttendanceService.instance.checkOut(
-          method: 'GPS',
-          latitude: _currentPosition!.latitude,
-          longitude: _currentPosition!.longitude,
-          locationName: _address,
-          notes: _distanceToCompany != null
-              ? 'GPS cách HUTECH Campus E1 ${_distanceToCompany!.toStringAsFixed(1)}m'
-              : 'GPS thực tế',
-        );
-      }
-
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Row(
-            children: [
-              Icon(
-                result.success ? Icons.check_circle : Icons.error,
-                color: result.success ? Colors.green : Colors.red,
-              ),
-              const SizedBox(width: 8),
-              Text(result.success
-                  ? (isCheckIn ? 'Vào ca thành công' : 'Ra ca thành công')
-                  : 'Chấm công thất bại'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                result.message,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 12),
-              Text('📍 Tọa độ thực: ${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}'),
-              if (_distanceToCompany != null)
-                Text('📏 Khoảng cách đến cơ sở: ${_distanceToCompany!.toStringAsFixed(1)} mét'),
-              const SizedBox(height: 6),
-              Text(
-                result.success
-                    ? '✅ Đã lưu bản ghi chấm công vào máy chủ SQL Server.'
-                    : '⚠️ Phản hồi từ backend (Mã ${result.statusCode}): ${result.message}',
-                style: TextStyle(
-                  color: result.success ? Colors.green[800] : Colors.red[800],
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Đóng'),
-            ),
-          ],
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null ? (box.localToGlobal(Offset.zero) & box.size) : null;
+      await SharePlus.instance.share(
+        ShareParams(
+          text: shareText,
+          subject: 'Vị trí hiện tại của tôi',
+          sharePositionOrigin: origin,
         ),
       );
-
-      // Nếu là ca Check-out thành công, gọi chung hộp thoại khảo sát cảm nhận sau ca làm
-      if (!isCheckIn && result.success && mounted) {
-        final recordId = int.tryParse(result.data?.id?.toString() ?? '');
-        if (recordId != null) {
-          await showPostShiftFeedbackDialog(
-            context: context,
-            recordId: recordId,
-          );
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi gửi dữ liệu chấm công: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    } catch (_) {
+      // Người dùng đóng bảng chia sẻ hoặc huỷ mà không gửi -> không báo lỗi
     }
   }
 
-  void _showAttendanceOptions() {
+  Future<void> _openGoogleMaps() async {
     if (_currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Chưa có tọa độ GPS hợp lệ. Vui lòng thử lại.'),
+          content: Text('Vui lòng lấy vị trí hiện tại trước khi mở bản đồ'),
           backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Xác nhận chấm công bằng GPS',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Tọa độ: ${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}\n'
-                '${_distanceToCompany != null ? 'Khoảng cách: ${_distanceToCompany!.toStringAsFixed(1)}m tới Campus E1' : ''}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _handleGpsAttendance(isCheckIn: true);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[700],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: const Icon(Icons.login),
-                label: const Text('Chấm công VÀO CA (Check-in)', style: TextStyle(fontSize: 15)),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _handleGpsAttendance(isCheckIn: false);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange[800],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: const Icon(Icons.logout),
-                label: const Text('Chấm công RA CA (Check-out)', style: TextStyle(fontSize: 15)),
-              ),
-            ],
-          ),
+    final lat = _currentPosition!.latitude;
+    final lng = _currentPosition!.longitude;
+    final mapUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+    final uri = Uri.parse(mapUrl);
+
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await Clipboard.setData(ClipboardData(text: mapUrl));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không thể mở ứng dụng bản đồ, đã sao chép link')),
+          );
+        }
+      }
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: mapUrl));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã sao chép liên kết Google Maps vào bộ nhớ tạm!')),
+        );
+      }
+    }
+  }
+
+  void _copyMapLink() {
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng lấy vị trí hiện tại trước khi sao chép link'),
+          backgroundColor: Colors.orange,
         ),
+      );
+      return;
+    }
+
+    final lat = _currentPosition!.latitude;
+    final lng = _currentPosition!.longitude;
+    final mapUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+    Clipboard.setData(ClipboardData(text: mapUrl));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đã sao chép liên kết Google Maps vào bộ nhớ tạm!'),
+        backgroundColor: Colors.teal,
       ),
     );
   }
@@ -421,18 +214,56 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
   Widget build(BuildContext context) {
     final currentLatLng = _currentPosition != null
         ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-        : const LatLng(companyLat, companyLng);
+        : const LatLng(defaultLat, defaultLng);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Điểm danh & Chia sẻ GPS'),
+        title: const Text('Chia sẻ vị trí'),
         backgroundColor: Colors.teal[700],
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.my_location),
             tooltip: 'Lấy lại vị trí GPS',
-            onPressed: (_isLoading || _isSubmitting) ? null : _fetchLocation,
+            onPressed: _isLoading ? null : _fetchLocation,
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Tùy chọn chia sẻ vị trí',
+            onSelected: (value) {
+              if (value == 'share') {
+                _shareLocation();
+              } else if (value == 'maps') {
+                _openGoogleMaps();
+              } else if (value == 'copy') {
+                _copyMapLink();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'share',
+                child: ListTile(
+                  leading: Icon(Icons.share, color: Colors.teal),
+                  title: Text('Chia sẻ vị trí (Hệ thống)'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'maps',
+                child: ListTile(
+                  leading: Icon(Icons.map, color: Colors.blue),
+                  title: Text('Mở trên Google Maps'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'copy',
+                child: ListTile(
+                  leading: Icon(Icons.copy, color: Colors.teal),
+                  title: Text('Sao chép liên kết Google Maps'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -456,24 +287,14 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
                     ),
                     MarkerLayer(
                       markers: [
-                        // Ghim vị trí Trụ sở Campus E1
-                        const Marker(
-                          point: LatLng(companyLat, companyLng),
-                          width: 50,
-                          height: 50,
-                          child: Tooltip(
-                            message: companyName,
-                            child: Icon(Icons.business_rounded, color: Colors.blue, size: 40),
-                          ),
-                        ),
-                        // Ghim vị trí người dùng (chỉ khi có tọa độ thật)
+                        // Ghim vị trí người dùng (khi có tọa độ thật)
                         if (_currentPosition != null)
                           Marker(
                             point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
                             width: 50,
                             height: 50,
                             child: const Tooltip(
-                              message: 'Vị trí GPS thực tế của bạn',
+                              message: 'Vị trí hiện tại của bạn',
                               child: Icon(Icons.location_on, color: Colors.red, size: 45),
                             ),
                           ),
@@ -534,51 +355,58 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        if (_distanceToCompany != null)
-                          Text(
-                            'Khoảng cách đến cơ sở: ${_distanceToCompany!.toStringAsFixed(1)} m (Tối đa 500m)',
-                            style: TextStyle(
-                              color: _distanceToCompany! <= 500 ? Colors.green[800] : Colors.orange[900],
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                         const SizedBox(height: 16),
 
+                        // Các tùy chọn mở bản đồ và sao chép link
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: (_isLoading || _currentPosition == null) ? null : _shareLocation,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.teal[700],
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: OutlinedButton.icon(
+                                onPressed: _isLoading ? null : _openGoogleMaps,
+                                icon: const Icon(Icons.map_outlined, size: 16),
+                                label: const Text('Mở Google Maps', style: TextStyle(fontSize: 13)),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  visualDensity: VisualDensity.compact,
                                 ),
-                                icon: const Icon(Icons.share_location_rounded),
-                                label: const Text('Chia sẻ vị trí'),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 10),
                             Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: (_isLoading || _currentPosition == null || _isSubmitting)
-                                    ? null
-                                    : _showAttendanceOptions,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue[700],
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: OutlinedButton.icon(
+                                onPressed: _isLoading ? null : _copyMapLink,
+                                icon: const Icon(Icons.copy_rounded, size: 16),
+                                label: const Text('Sao chép link', style: TextStyle(fontSize: 13)),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  visualDensity: VisualDensity.compact,
                                 ),
-                                icon: const Icon(Icons.fingerprint_rounded),
-                                label: const Text('Điểm danh GPS'),
                               ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 16),
+
+                        ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _shareLocation,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: const Icon(Icons.share_location_rounded),
+                          label: const Text(
+                            'Chia sẻ vị trí',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+
                         if (_currentPosition == null && !_isLoading)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
+                            padding: const EdgeInsets.only(top: 10.0),
                             child: TextButton.icon(
                               onPressed: _fetchLocation,
                               icon: const Icon(Icons.refresh),
@@ -593,7 +421,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
             ],
           ),
 
-          if (_isLoading || _isSubmitting)
+          if (_isLoading)
             Container(
               color: Colors.black26,
               child: Center(
@@ -602,14 +430,12 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
                     padding: const EdgeInsets.all(20.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 16),
+                      children: const [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
                         Text(
-                          _isLoading
-                              ? 'Đang kết nối vệ tinh GPS...'
-                              : 'Đang gửi dữ liệu chấm công tới máy chủ...',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          'Đang kết nối vệ tinh GPS...',
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),

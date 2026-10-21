@@ -32,7 +32,7 @@ void main() {
     expect(find.text('Vai trò: User'), findsOneWidget);
     expect(find.text('Chấm công khuôn mặt'), findsOneWidget);
     expect(find.text('Chấm công bằng mã QR'), findsOneWidget);
-    expect(find.text('Chấm công bằng vị trí GPS'), findsOneWidget);
+    expect(find.text('Chia sẻ vị trí'), findsOneWidget);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expectAttendanceOnly();
 
@@ -52,7 +52,7 @@ void main() {
     expect(find.text('Dashboard Nhân Viên'), findsOneWidget);
     expect(find.text('Vào ca (Check-in)'), findsOneWidget);
     expect(find.text('Ra ca (Check-out)'), findsOneWidget);
-    expect(find.text('Lịch sử chấm công SQL Server'), findsOneWidget);
+    expect(find.text('Lịch sử chấm công'), findsOneWidget);
     expect(find.text('Phương thức chấm công'), findsOneWidget);
     expectAttendanceOnly();
 
@@ -61,7 +61,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Chấm công khuôn mặt'), findsOneWidget);
     expect(find.text('1. Quét mã QR chấm công địa điểm'), findsOneWidget);
-    expect(find.text('2. Điểm danh định vị GPS thực tế'), findsOneWidget);
+    expect(find.text('Chia sẻ vị trí'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

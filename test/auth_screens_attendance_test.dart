@@ -18,10 +18,11 @@ void main() {
       expect(find.byType(TextField), findsNWidgets(3));
       expect(find.byIcon(Icons.qr_code_scanner_rounded), findsNothing);
       expect(find.byIcon(Icons.fingerprint), findsNothing);
-      expect(find.byIcon(Icons.face_rounded), findsNothing);
+      expect(find.byIcon(Icons.face_rounded), findsOneWidget);
       expect(find.text('facebook'), findsNothing);
 
-      await tester.enterText(find.byType(TextField).at(0), 'staff1');
+      expect(find.text('Tài khoản Admin không cần nhập mã OTP'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).at(0), 'admin');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
       await tester.ensureVisible(
         find.widgetWithText(ElevatedButton, 'Đăng nhập'),
@@ -32,7 +33,7 @@ void main() {
         find.text(
           'Vui lòng nhập mã OTP để xác thực đăng nhập',
         ),
-        findsOneWidget,
+        findsNothing,
       );
     },
   );

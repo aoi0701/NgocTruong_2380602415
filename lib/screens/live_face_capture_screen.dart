@@ -5,18 +5,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../services/live_face_gate.dart';
+import '../services/face_feature_helper.dart';
 
 /// Processes the front camera stream; returns one accepted sample, never a photo.
 class LiveFaceCaptureScreen extends StatefulWidget {
   const LiveFaceCaptureScreen({
     super.key,
     required this.title,
-    required this.extractFeatures,
-    required this.matchesSample,
+    this.sample,
+    this.extractFeatures,
+    this.matchesSample,
   });
+
   final String title;
-  final Map<String, double> Function(Face face) extractFeatures;
-  final bool Function(Map<String, double> features) matchesSample;
+
+  /// Mẫu đặc trưng khuôn mặt đã đăng ký trước (nếu có).
+  /// Nếu null: Màn hình hoạt động ở chế độ thu thập (enrollment/face-login)
+  /// và hoàn tất ngay khi đạt chuẩn Liveness.
+  final Map<String, dynamic>? sample;
+
+  /// Hàm trích xuất đặc trưng khuôn mặt (tùy chọn, mặc định dùng FaceFeatureHelper.extractFaceFeatures).
+  final Map<String, double> Function(Face face)? extractFeatures;
+
+  /// Hàm so khớp mẫu khuôn mặt (tùy chọn).
+  final bool Function(Map<String, double> features)? matchesSample;
 
   @override
   State<LiveFaceCaptureScreen> createState() => _LiveFaceCaptureScreenState();
@@ -45,6 +57,9 @@ class _LiveFaceCaptureScreenState extends State<LiveFaceCaptureScreen>
   Completer<void>? _frameDone;
   String _hint = 'Đang mở camera trước...';
   String? _error;
+
+  int _openEyesDirectFrames = 0;
+  int? _lastTrackingId;
 
   @override
   void initState() {
@@ -88,9 +103,13 @@ class _LiveFaceCaptureScreenState extends State<LiveFaceCaptureScreen>
       }
       _camera = controller;
       _gate.reset();
+      _openEyesDirectFrames = 0;
+      _lastTrackingId = null;
       setState(() {
         _error = null;
-        _hint = 'Nhìn thẳng và mỉm cười hoặc chớp mắt trước camera';
+        _hint = widget.sample == null
+            ? 'Nhìn thẳng vào camera, mở to mắt hoặc mỉm cười'
+            : 'Nhìn thẳng và mỉm cười hoặc chớp mắt trước camera';
       });
       await controller.startImageStream(
         (frame) => _processFrame(frame, generation),
@@ -169,6 +188,8 @@ class _LiveFaceCaptureScreenState extends State<LiveFaceCaptureScreen>
       if (!mounted || _finished || generation != _generation) return;
       if (faces.length != 1) {
         _gate.reset();
+        _openEyesDirectFrames = 0;
+        _lastTrackingId = null;
         setState(
           () => _hint = faces.isEmpty
               ? 'Đưa khuôn mặt vào khung camera'
@@ -177,21 +198,65 @@ class _LiveFaceCaptureScreenState extends State<LiveFaceCaptureScreen>
         return;
       }
       final face = faces.single;
-      final features = widget.extractFeatures(face);
-      final facing =
-          (face.headEulerAngleX ?? 90).abs() <= 15 &&
-          (face.headEulerAngleY ?? 90).abs() <= 15 &&
-          (face.headEulerAngleZ ?? 90).abs() <= 15;
-      final matches = widget.matchesSample(features);
-      final accepted = _gate.observe(
+      final features = widget.extractFeatures != null
+          ? widget.extractFeatures!(face)
+          : FaceFeatureHelper.extractFaceFeatures(face);
+
+      final double rotX = face.headEulerAngleX ?? 90;
+      final double rotY = face.headEulerAngleY ?? 90;
+      final double rotZ = face.headEulerAngleZ ?? 90;
+      final facing = FaceLivenessChecker.isHeadAngleDirect(
+        yaw: rotY,
+        roll: rotZ,
+        pitch: rotX,
+      );
+
+      final matches = widget.matchesSample != null
+          ? widget.matchesSample!(features)
+          : (widget.sample != null
+              ? FaceFeatureHelper.isMatch(features, widget.sample)
+              : true);
+
+      final leftEye = face.leftEyeOpenProbability;
+      final rightEye = face.rightEyeOpenProbability;
+      final smile = face.smilingProbability;
+
+      final gateAccepted = _gate.observe(
         faceCount: 1,
         facingForward: facing,
         matches: matches,
         trackingId: face.trackingId,
-        leftEye: face.leftEyeOpenProbability,
-        rightEye: face.rightEyeOpenProbability,
-        smile: face.smilingProbability,
+        leftEye: leftEye,
+        rightEye: rightEye,
+        smile: smile,
       );
+
+      bool accepted = gateAccepted;
+
+      // Khi sample == null (đăng ký mẫu hoặc đăng nhập khuôn mặt khi chưa có mẫu từ trước):
+      // Đạt chuẩn Liveness khi: chớp mắt hoặc mỉm cười (qua LiveFaceGate)
+      // HOẶC 2 mắt mở to trực diện (leftEye >= 0.75 && rightEye >= 0.75 trong >= 3 frames ổn định).
+      if (widget.sample == null) {
+        if (_lastTrackingId != null &&
+            face.trackingId != null &&
+            _lastTrackingId != face.trackingId) {
+          _openEyesDirectFrames = 0;
+        }
+        _lastTrackingId = face.trackingId;
+
+        if (facing &&
+            matches &&
+            (leftEye ?? 0) >= 0.75 &&
+            (rightEye ?? 0) >= 0.75) {
+          _openEyesDirectFrames++;
+          if (_openEyesDirectFrames >= 3) {
+            accepted = true;
+          }
+        } else {
+          _openEyesDirectFrames = 0;
+        }
+      }
+
       if (accepted) {
         _finished = true;
         setState(() => _hint = 'Đã nhận diện. Đang xác nhận...');
@@ -203,12 +268,16 @@ class _LiveFaceCaptureScreenState extends State<LiveFaceCaptureScreen>
               ? 'Nhìn thẳng vào camera'
               : !matches
               ? 'Khuôn mặt chưa khớp mẫu. Hãy nhìn rõ camera'
-              : 'Giữ mặt trong khung, mỉm cười hoặc chớp mắt',
+              : widget.sample != null
+              ? 'Giữ mặt trong khung, mỉm cười hoặc chớp mắt'
+              : 'Giữ mặt thẳng, mở to mắt hoặc mỉm cười',
         );
       }
     } catch (error) {
       if (mounted && generation == _generation && !_finished) {
         _gate.reset();
+        _openEyesDirectFrames = 0;
+        _lastTrackingId = null;
         setState(() => _hint = 'Chưa nhận diện được: $error');
       }
     } finally {
@@ -241,6 +310,8 @@ class _LiveFaceCaptureScreenState extends State<LiveFaceCaptureScreen>
     _camera = null;
     ++_generation;
     _gate.reset();
+    _openEyesDirectFrames = 0;
+    _lastTrackingId = null;
     try {
       await controller?.dispose();
     } catch (error) {

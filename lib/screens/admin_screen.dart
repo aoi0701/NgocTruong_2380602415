@@ -675,6 +675,528 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   // Đăng xuất khỏi hệ thống
+  void _showErrorAlert({required String title, required String message}) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateEmployeeDialog() {
+    final formKey = GlobalKey<FormState>();
+    final usernameController = TextEditingController();
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    String selectedRole = 'Staff';
+    bool obscurePassword = true;
+    bool isSubmitting = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.blue[100],
+                  child: const Icon(Icons.person_add, color: Colors.blue),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Tạo tài khoản mới',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      key: const Key('createUsernameField'),
+                      controller: usernameController,
+                      enabled: !isSubmitting,
+                      decoration: const InputDecoration(
+                        labelText: 'Tên đăng nhập *',
+                        hintText: 'VD: nguyen_van_a',
+                        prefixIcon: Icon(Icons.person_outline),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Vui lòng nhập tên đăng nhập';
+                        }
+                        if (value.trim().length < 3) {
+                          return 'Tên đăng nhập phải có ít nhất 3 ký tự';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      key: const Key('createEmailField'),
+                      controller: emailController,
+                      enabled: !isSubmitting,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email *',
+                        hintText: 'VD: user@hutech.edu.vn',
+                        prefixIcon: Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Vui lòng nhập email';
+                        }
+                        final emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$');
+                        if (!emailRegex.hasMatch(value.trim())) {
+                          return 'Email không hợp lệ (ví dụ: user@company.com)';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      key: const Key('createPasswordField'),
+                      controller: passwordController,
+                      enabled: !isSubmitting,
+                      obscureText: obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Mật khẩu *',
+                        hintText: 'Nhập mật khẩu cho tài khoản',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              obscurePassword = !obscurePassword;
+                            });
+                          },
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Vui lòng nhập mật khẩu';
+                        }
+                        if (value.length < 6) {
+                          return 'Mật khẩu phải từ 6 ký tự trở lên';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Vai trò tài khoản:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      key: const Key('createRoleDropdown'),
+                      value: selectedRole,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.shield_outlined),
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Staff',
+                          child: Text('Staff (Nhân viên)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Admin',
+                          child: Text('Admin (Quản trị viên)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'User',
+                          child: Text('User (Người dùng)'),
+                        ),
+                      ],
+                      onChanged: isSubmitting
+                          ? null
+                          : (val) {
+                              if (val != null) {
+                                setDialogState(() => selectedRole = val);
+                              }
+                            },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton.icon(
+                key: const Key('submitCreateEmployeeButton'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (formKey.currentState?.validate() != true) return;
+                        setDialogState(() => isSubmitting = true);
+
+                        final result = await AttendanceService.instance
+                            .createEmployee(
+                              username: usernameController.text.trim(),
+                              email: emailController.text.trim(),
+                              password: passwordController.text,
+                              role: selectedRole,
+                            );
+
+                        if (!context.mounted) return;
+
+                        if (result.success) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(
+                              content: Text(result.message),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          await _fetchEmployees();
+                        } else {
+                          setDialogState(() => isSubmitting = false);
+                          _showErrorAlert(
+                            title: 'Tạo tài khoản thất bại',
+                            message: result.message,
+                          );
+                        }
+                      },
+                icon: isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check, size: 18),
+                label: Text(isSubmitting ? 'Đang tạo...' : 'Tạo tài khoản'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showEditEmployeeDialog(Employee employee) {
+    final formKey = GlobalKey<FormState>();
+    final usernameController = TextEditingController(text: employee.userName);
+    final emailController = TextEditingController(text: employee.email ?? '');
+    String selectedRole = ['Admin', 'Staff', 'User'].contains(employee.role)
+        ? employee.role
+        : 'Staff';
+    bool isSubmitting = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.blue[100],
+                  child: const Icon(Icons.edit, color: Colors.blue),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Sửa tài khoản: ${employee.userName}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      key: const Key('editUsernameField'),
+                      controller: usernameController,
+                      enabled: !isSubmitting,
+                      decoration: const InputDecoration(
+                        labelText: 'Tên đăng nhập *',
+                        prefixIcon: Icon(Icons.person_outline),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Vui lòng nhập tên đăng nhập';
+                        }
+                        if (value.trim().length < 3) {
+                          return 'Tên đăng nhập phải có ít nhất 3 ký tự';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      key: const Key('editEmailField'),
+                      controller: emailController,
+                      enabled: !isSubmitting,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email *',
+                        prefixIcon: Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Vui lòng nhập email';
+                        }
+                        final emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$');
+                        if (!emailRegex.hasMatch(value.trim())) {
+                          return 'Email không hợp lệ (ví dụ: user@company.com)';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Vai trò tài khoản:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      key: const Key('editRoleDropdown'),
+                      value: selectedRole,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.shield_outlined),
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Staff',
+                          child: Text('Staff (Nhân viên)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Admin',
+                          child: Text('Admin (Quản trị viên)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'User',
+                          child: Text('User (Người dùng)'),
+                        ),
+                      ],
+                      onChanged: isSubmitting
+                          ? null
+                          : (val) {
+                              if (val != null) {
+                                setDialogState(() => selectedRole = val);
+                              }
+                            },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton.icon(
+                key: const Key('submitUpdateEmployeeButton'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (formKey.currentState?.validate() != true) return;
+                        setDialogState(() => isSubmitting = true);
+
+                        final result = await AttendanceService.instance
+                            .updateEmployee(
+                              employeeId: employee.id,
+                              username: usernameController.text.trim(),
+                              email: emailController.text.trim(),
+                              role: selectedRole,
+                            );
+
+                        if (!context.mounted) return;
+
+                        if (result.success) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(
+                              content: Text(result.message),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          await _fetchEmployees();
+                        } else {
+                          setDialogState(() => isSubmitting = false);
+                          _showErrorAlert(
+                            title: 'Cập nhật thất bại',
+                            message: result.message,
+                          );
+                        }
+                      },
+                icon: isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save, size: 18),
+                label: Text(isSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showDeleteEmployeeDialog(Employee employee) {
+    bool isSubmitting = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                SizedBox(width: 8),
+                Expanded(child: Text('Xác nhận xóa tài khoản')),
+              ],
+            ),
+            content: Text(
+              'Bạn có chắc chắn muốn xóa tài khoản ${employee.userName} không?',
+              style: const TextStyle(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton.icon(
+                key: const Key('confirmDeleteEmployeeButton'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+
+                        final result = await AttendanceService.instance
+                            .deleteEmployee(employee.id);
+
+                        if (!context.mounted) return;
+
+                        if (result.success) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(
+                              content: Text(result.message),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          await _fetchEmployees();
+                        } else {
+                          Navigator.pop(ctx);
+                          _showErrorAlert(
+                            title: 'Xóa tài khoản thất bại',
+                            message: result.message,
+                          );
+                        }
+                      },
+                icon: isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.delete_forever, size: 18),
+                label: Text(isSubmitting ? 'Đang xóa...' : 'Xóa'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // Đăng xuất khỏi hệ thống
   Future<void> _handleLogout() async {
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -970,7 +1492,7 @@ class _AdminScreenState extends State<AdminScreen>
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Không thể tải dữ liệu chấm công từ SQL Server:\n$_attendanceErrorMessage',
+                          'Không thể tải dữ liệu chấm công:\n$_attendanceErrorMessage',
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.red),
                         ),
@@ -1199,17 +1721,6 @@ class _AdminScreenState extends State<AdminScreen>
                 ],
               ),
             ],
-            if (record.notes != null && record.notes!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Ghi chú: ${record.notes}',
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
 
             const Divider(height: 18),
             // Nút "Điều chỉnh" và "Xóa" (BẮT BUỘC NHẬP LÝ DO - reason)
@@ -1287,7 +1798,7 @@ class _AdminScreenState extends State<AdminScreen>
                           ),
                         ),
                         Text(
-                          'Cấp quyền và đổi vai trò người dùng (API: /api/Admin/employees)',
+                          'Cấp quyền và quản lý tài khoản người dùng',
                           style: TextStyle(
                             color: Colors.grey[700],
                             fontSize: 13,
@@ -1297,6 +1808,29 @@ class _AdminScreenState extends State<AdminScreen>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              // Nút Tạo tài khoản nổi bật
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  key: const Key('createEmployeeButton'),
+                  onPressed: _showCreateEmployeeDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[800],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 2,
+                  ),
+                  icon: const Icon(Icons.person_add, size: 20),
+                  label: const Text(
+                    'Tạo tài khoản',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -1401,67 +1935,144 @@ class _AdminScreenState extends State<AdminScreen>
     }
 
     return Card(
-      elevation: 1.5,
+      elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: roleColor.withValues(alpha: 0.15),
-          foregroundColor: roleColor,
-          child: Text(
-            emp.userName.isNotEmpty ? emp.userName[0].toUpperCase() : 'U',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-        title: Row(
-          children: [
-            Text(
-              emp.userName,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: roleColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: roleColor),
-              ),
-              child: Text(
-                emp.role,
-                style: TextStyle(
-                  color: roleColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ],
-        ),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(14.0),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (emp.email != null && emp.email!.isNotEmpty)
-              Text(
-                'Email: ${emp.email}',
-                style: TextStyle(color: Colors.grey[700], fontSize: 12),
-              ),
-            Text(
-              'ID: ${emp.id}',
-              style: const TextStyle(color: Colors.black38, fontSize: 11),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  backgroundColor: roleColor.withValues(alpha: 0.15),
+                  foregroundColor: roleColor,
+                  child: Text(
+                    emp.userName.isNotEmpty
+                        ? emp.userName[0].toUpperCase()
+                        : 'U',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            emp.userName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: roleColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: roleColor),
+                            ),
+                            child: Text(
+                              emp.role,
+                              style: TextStyle(
+                                color: roleColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (emp.email != null && emp.email!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Email: ${emp.email}',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 2),
+                      Text(
+                        'ID: ${emp.id}',
+                        style: const TextStyle(
+                          color: Colors.black38,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 18),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                OutlinedButton.icon(
+                  key: Key('changeRoleEmployeeButton_${emp.id}'),
+                  onPressed: () => _showChangeRoleDialog(emp),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.indigo[800],
+                    side: BorderSide(color: Colors.indigo[200]!),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                  ),
+                  icon: const Icon(
+                    Icons.admin_panel_settings_outlined,
+                    size: 16,
+                  ),
+                  label: const Text(
+                    'Đổi vai trò',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  key: Key('editEmployeeButton_${emp.id}'),
+                  onPressed: () => _showEditEmployeeDialog(emp),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue[800],
+                    side: BorderSide(color: Colors.blue[300]!),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                  ),
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Sửa', style: TextStyle(fontSize: 12)),
+                ),
+                OutlinedButton.icon(
+                  key: Key('deleteEmployeeButton_${emp.id}'),
+                  onPressed: () => _showDeleteEmployeeDialog(emp),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red[800],
+                    side: BorderSide(color: Colors.red[300]!),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                  ),
+                  icon: const Icon(Icons.delete, size: 16),
+                  label: const Text('Xóa', style: TextStyle(fontSize: 12)),
+                ),
+              ],
             ),
           ],
-        ),
-        trailing: ElevatedButton.icon(
-          onPressed: () => _showChangeRoleDialog(emp),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue[50],
-            foregroundColor: Colors.blue[900],
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          ),
-          icon: const Icon(Icons.admin_panel_settings_outlined, size: 16),
-          label: const Text('Đổi vai trò', style: TextStyle(fontSize: 12)),
         ),
       ),
     );

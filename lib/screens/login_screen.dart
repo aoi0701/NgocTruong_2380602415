@@ -7,6 +7,7 @@ import 'admin_screen.dart';
 import 'staff_screen.dart';
 import 'main_screen.dart';
 import 'registration_screen.dart';
+import 'live_face_capture_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -212,23 +213,13 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Bắt buộc người dùng phải nhập mã OTP nhận được qua email mới được đăng nhập
-    if (otp.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Vui lòng nhập mã OTP để xác thực đăng nhập',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    // Không chặn ở client khi ô OTP trống:
+    // Backend sẽ quyết định xem tài khoản có cần OTP hay không (Admin được miễn).
 
     setState(() => _isLoading = true);
 
     try {
-      final result = await Auth.login(username, password, otp: otp);
+      final result = await Auth.login(username, password, otp: otp.isNotEmpty ? otp : null);
       if (!mounted) return;
       setState(() => _isLoading = false);
 
@@ -254,6 +245,22 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
+        // Kiểm tra nếu là lỗi yêu cầu OTP (OTP_REQUIRED) cho tài khoản Staff/User:
+        // Giữ nguyên username/password đã nhập và hướng dẫn bấm "Gửi mã OTP"
+        if (result['code'] == 'OTP_REQUIRED' || result['requiresOtp'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                result['message'] ??
+                    'Tài khoản yêu cầu mã OTP. Vui lòng bấm "Gửi mã OTP" bên dưới và nhập mã từ email.',
+              ),
+              backgroundColor: Colors.orange[800],
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          return;
+        }
+
         // Xóa sạch token cũ khi 401 Unauthorized hoặc đăng nhập thất bại
         await Auth.logout();
         final errorMessage =
@@ -273,6 +280,125 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi kết nối khi đăng nhập: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Đăng nhập bằng khuôn mặt:
+  /// Yêu cầu nhập username trước, mở camera realtime dùng chung và gửi đặc trưng lên backend đối chiếu
+  Future<void> _handleFaceLogin() async {
+    final username = _usernameController.text.trim();
+    if (username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Vui lòng nhập Tên đăng nhập trước khi quét khuôn mặt',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Mở camera realtime dùng chung để nhận diện người thật và trích xuất đặc trưng
+    final features = await Navigator.push<Map<String, double>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveFaceCaptureScreen(
+          title: 'Đăng nhập khuôn mặt: $username',
+        ),
+      ),
+    );
+
+    if (features == null || !mounted) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final result = await Auth.loginWithFace(username, features);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (result['success'] == true) {
+        final String role = (result['role'] ?? 'User').toString();
+        final normalized = role.toLowerCase();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đăng nhập bằng khuôn mặt thành công!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        if (normalized == 'admin') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminScreen()),
+          );
+        } else if (normalized == 'staff' || normalized == 'nhanvien') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const StaffScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const MainScreen()),
+          );
+        }
+      } else {
+        await Auth.logout();
+        final String? code = result['code']?.toString();
+        final String msg = result['message']?.toString() ??
+            'Đăng nhập bằng khuôn mặt không thành công.';
+
+        if (code == 'NO_FACE_PROFILE') {
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Chưa có mẫu khuôn mặt'),
+                ],
+              ),
+              content: const Text(
+                'Tài khoản này chưa đăng ký mẫu khuôn mặt.\n\n'
+                'Vui lòng đăng nhập thông thường bằng mật khẩu, sau đó vào mục Chấm công khuôn mặt để đăng ký mẫu một lần trước khi sử dụng tính năng này.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Đã hiểu'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Thử lại',
+                textColor: Colors.white,
+                onPressed: _handleFaceLogin,
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi kết nối khi đăng nhập khuôn mặt: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -387,6 +513,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: _fieldDecoration(
                         'Mã xác thực OTP',
                         Icons.mark_email_read_outlined,
+                      ).copyWith(
+                        helperText: 'Tài khoản Admin không cần nhập mã OTP',
+                        helperStyle: TextStyle(
+                          color: Colors.blueGrey[600],
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -445,6 +577,29 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _handleFaceLogin,
+                        icon: const Icon(Icons.face_rounded, color: Color(0xFF087F8C)),
+                        label: const Text(
+                          'Đăng nhập bằng khuôn mặt',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF087F8C),
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF087F8C), width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+
                     const SizedBox(height: 20),
                     Wrap(
                       alignment: WrapAlignment.center,

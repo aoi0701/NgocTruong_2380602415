@@ -1,9 +1,13 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using NgocTruong_2380602415.Api.Data;
 using NgocTruong_2380602415.Api.Models;
 using NgocTruong_2380602415.Api.Services;
 
@@ -14,10 +18,18 @@ public class OtpRequestModel
     public string Username { get; set; } = string.Empty;
 }
 
+public class FaceLoginRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public Dictionary<string, double>? Features { get; set; }
+    public string? FaceVectorJson { get; set; }
+}
+
 [ApiController]
 [Route("api/[controller]")]
 public class AuthenticateController : ControllerBase
 {
+    private readonly ApplicationDbContext _context;
     private readonly UserManager<User> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IConfiguration _configuration;
@@ -25,12 +37,14 @@ public class AuthenticateController : ControllerBase
     private readonly ILogger<AuthenticateController> _logger;
 
     public AuthenticateController(
+        ApplicationDbContext context,
         UserManager<User> userManager,
         RoleManager<IdentityRole> roleManager,
         IConfiguration configuration,
         IOtpService otpService,
         ILogger<AuthenticateController> logger)
     {
+        _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
         _configuration = configuration;
@@ -154,7 +168,7 @@ public class AuthenticateController : ControllerBase
         var identifier = model.Username.Trim();
         var user = await _userManager.FindByNameAsync(identifier) ?? await _userManager.FindByEmailAsync(identifier);
 
-        // 1. Kiểm tra password trước
+        // Bước 1: Xác thực username/email và mật khẩu với _userManager.CheckPasswordAsync(user, model.Password)
         if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
         {
             return Unauthorized(new
@@ -164,30 +178,38 @@ public class AuthenticateController : ControllerBase
             });
         }
 
-        // 2. Bắt buộc OTP cho luồng đăng nhập username/password: kiểm tra password trước, kiểm tra OTP sau
-        if (string.IsNullOrWhiteSpace(model.Otp))
-        {
-            return BadRequest(new
-            {
-                Status = false,
-                Message = "Vui lòng nhập mã OTP xác thực đăng nhập."
-            });
-        }
-
-        // 3. Kiểm tra OTP: ExpirationTime, AttemptsCount, Single-use
-        var (isValid, otpError) = _otpService.ValidateOtp(user.UserName!, model.Otp.Trim());
-        if (!isValid)
-        {
-            return BadRequest(new
-            {
-                Status = false,
-                Message = otpError
-            });
-        }
-
-        // Cấp JWT chỉ khi cả hai hợp lệ
+        // Bước 2: Lấy vai trò thật từ Identity bằng _userManager.GetRolesAsync(user)
         var userRoles = await _userManager.GetRolesAsync(user);
+        var isAdmin = userRoles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase));
 
+        // Bước 3: Nếu user có vai trò Admin -> Bỏ qua kiểm tra OTP
+        // Bước 4: Nếu user là Staff hoặc User -> Bắt buộc phải có OTP
+        if (!isAdmin)
+        {
+            if (string.IsNullOrWhiteSpace(model.Otp))
+            {
+                return BadRequest(new
+                {
+                    status = false,
+                    code = "OTP_REQUIRED",
+                    requiresOtp = true,
+                    message = "Tài khoản của bạn yêu cầu xác thực mã OTP gửi về email."
+                });
+            }
+
+            // Kiểm tra OTP: ExpirationTime, AttemptsCount, Single-use
+            var (isValid, otpError) = _otpService.ValidateOtp(user.UserName!, model.Otp.Trim());
+            if (!isValid)
+            {
+                return BadRequest(new
+                {
+                    status = false,
+                    message = otpError
+                });
+            }
+        }
+
+        // Cấp JWT chỉ khi thông tin hợp lệ
         var authClaims = new List<Claim>
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id),
@@ -203,14 +225,187 @@ public class AuthenticateController : ControllerBase
         }
 
         var token = GenerateToken(authClaims);
+        var primaryRole = isAdmin
+            ? "Admin"
+            : (userRoles.FirstOrDefault(r => string.Equals(r, "Staff", StringComparison.OrdinalIgnoreCase)) ?? userRoles.FirstOrDefault() ?? "User");
 
         return Ok(new
         {
             Status = true,
             Message = "Logged in successfully",
             Token = token,
-            Role = userRoles.FirstOrDefault() ?? "User"
+            Role = primaryRole
         });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login-face")]
+    public async Task<IActionResult> LoginFace([FromBody] FaceLoginRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.Username) ||
+            ((request.Features == null || request.Features.Count == 0) && string.IsNullOrWhiteSpace(request.FaceVectorJson)))
+        {
+            return BadRequest(new
+            {
+                status = false,
+                message = "Vui lòng cung cấp tên đăng nhập và dữ liệu đặc trưng khuôn mặt."
+            });
+        }
+
+        var username = request.Username.Trim();
+        var user = await _userManager.FindByNameAsync(username) ?? await _userManager.FindByEmailAsync(username);
+        if (user == null)
+        {
+            return NotFound(new
+            {
+                status = false,
+                message = "Không tìm thấy tài khoản với tên đăng nhập này."
+            });
+        }
+
+        var profile = await _context.UserFaceProfiles.FirstOrDefaultAsync(p => p.UserId == user.Id);
+        if (profile == null || string.IsNullOrWhiteSpace(profile.FaceVectorJson))
+        {
+            return NotFound(new
+            {
+                status = false,
+                code = "NO_FACE_PROFILE",
+                message = "Tài khoản chưa đăng ký mẫu khuôn mặt. Vui lòng đăng nhập bằng mật khẩu để đăng ký mẫu trước."
+            });
+        }
+
+        var inputFeatures = ExtractFeatures(request.Features, request.FaceVectorJson);
+        if (inputFeatures == null || !FeatureKeys.Any(k => inputFeatures.ContainsKey(k)))
+        {
+            return BadRequest(new
+            {
+                status = false,
+                message = "Dữ liệu đặc trưng khuôn mặt không hợp lệ."
+            });
+        }
+
+        var registeredFeatures = ExtractFeatures(null, profile.FaceVectorJson);
+        if (registeredFeatures == null || !FeatureKeys.Any(k => registeredFeatures.ContainsKey(k)))
+        {
+            return NotFound(new
+            {
+                status = false,
+                code = "NO_FACE_PROFILE",
+                message = "Tài khoản chưa đăng ký mẫu khuôn mặt. Vui lòng đăng nhập bằng mật khẩu để đăng ký mẫu trước."
+            });
+        }
+
+        var similarity = CalculateSimilarity(inputFeatures, registeredFeatures);
+        if (similarity < 0.65)
+        {
+            return BadRequest(new
+            {
+                status = false,
+                message = "Khuôn mặt không khớp với mẫu đã đăng ký của tài khoản."
+            });
+        }
+
+        var userRoles = await _userManager.GetRolesAsync(user);
+        var authClaims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+            new Claim(JwtRegisteredClaimNames.Sub, user.UserName ?? string.Empty),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
+
+        foreach (var userRole in userRoles)
+        {
+            authClaims.Add(new Claim(ClaimTypes.Role, userRole));
+            authClaims.Add(new Claim("role", userRole));
+        }
+
+        var token = GenerateToken(authClaims);
+        var primaryRole = userRoles.FirstOrDefault(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase))
+            ?? userRoles.FirstOrDefault(r => string.Equals(r, "Staff", StringComparison.OrdinalIgnoreCase))
+            ?? userRoles.FirstOrDefault()
+            ?? "User";
+
+        return Ok(new
+        {
+            status = true,
+            message = "Đăng nhập bằng khuôn mặt thành công",
+            token = token,
+            role = primaryRole
+        });
+    }
+
+    private static readonly string[] FeatureKeys = ["boxAspect", "eyeDistRatio", "eyeToNoseRatio", "noseToMouthRatio"];
+
+    private static Dictionary<string, double>? ExtractFeatures(Dictionary<string, double>? dict, string? jsonStr)
+    {
+        if (dict != null && dict.Count > 0)
+        {
+            return new Dictionary<string, double>(dict, StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (string.IsNullOrWhiteSpace(jsonStr))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonStr);
+            var root = doc.RootElement;
+            var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in root.EnumerateObject())
+                {
+                    if (prop.Value.TryGetDouble(out var val))
+                    {
+                        result[prop.Name] = val;
+                    }
+                }
+                return result;
+            }
+            else if (root.ValueKind == JsonValueKind.Array)
+            {
+                var arr = root.EnumerateArray().ToList();
+                for (int i = 0; i < Math.Min(arr.Count, FeatureKeys.Length); i++)
+                {
+                    if (arr[i].TryGetDouble(out var val))
+                    {
+                        result[FeatureKeys[i]] = val;
+                    }
+                }
+                return result;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static double CalculateSimilarity(
+        IReadOnlyDictionary<string, double> sample1,
+        IReadOnlyDictionary<string, double> sample2)
+    {
+        double diff = 0.0;
+        int count = 0;
+
+        foreach (var key in FeatureKeys)
+        {
+            if (sample1.TryGetValue(key, out var v1) && sample2.TryGetValue(key, out var v2))
+            {
+                diff += Math.Abs(v1 - v2);
+                count++;
+            }
+        }
+
+        if (count == 0) return 0.0;
+        var avgDiff = diff / count;
+        return Math.Clamp(1.0 - (avgDiff * 3.0), 0.0, 1.0);
     }
 
     private string GenerateToken(IEnumerable<Claim> claims)

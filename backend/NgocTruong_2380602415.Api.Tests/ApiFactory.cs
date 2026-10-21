@@ -75,10 +75,14 @@ internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Pr
         try
         {
             var client = CreateClient();
-            var otpService = Services.GetRequiredService<IOtpService>();
-            otpService.ResetCooldownForTesting(username);
-            var reqOtpRes = await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username });
-            var otp = otpService.GetActiveOtpForTesting(username);
+            string? otp = null;
+            if (!string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))
+            {
+                var otpService = Services.GetRequiredService<IOtpService>();
+                otpService.ResetCooldownForTesting(username);
+                var reqOtpRes = await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username });
+                otp = otpService.GetActiveOtpForTesting(username);
+            }
             var response = await client.PostAsJsonAsync("/api/Authenticate/login", new { username, password, otp });
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadFromJsonAsync<JsonElement>();

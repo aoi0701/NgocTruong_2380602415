@@ -8,6 +8,7 @@ import '../config/config_url.dart';
 class AuthService {
   String get apiUrl => "${Config_URL.baseUrl}Authenticate/login";
   String get requestOtpUrl => "${Config_URL.baseUrl}Authenticate/request-otp";
+  String get loginFaceUrl => "${Config_URL.baseUrl}Authenticate/login-face";
   static const Duration requestTimeout = Duration(seconds: 10);
 
   /// Yêu cầu gửi mã OTP xác thực đăng nhập qua email
@@ -186,12 +187,22 @@ class AuthService {
         }
         return {"success": false, "message": "Định dạng dữ liệu phản hồi không đúng"};
       } else {
-        // Xử lý các mã lỗi như 400 (OTP sai), 401 (Sai username/password), 500, v.v.
+        // Xử lý các mã lỗi như 400 (OTP sai / OTP_REQUIRED), 401 (Sai username/password), 500, v.v.
         String msg = "Đăng nhập thất bại: mã lỗi ${response.statusCode}";
+        String? code;
+        bool requiresOtp = false;
         try {
           final data = jsonDecode(response.body);
-          if (data is Map && data['message'] != null) {
-            msg = data['message'].toString();
+          if (data is Map) {
+            if (data['message'] != null) {
+              msg = data['message'].toString();
+            }
+            if (data['code'] != null) {
+              code = data['code'].toString();
+            }
+            if (data['requiresOtp'] == true) {
+              requiresOtp = true;
+            }
           }
         } catch (_) {}
 
@@ -200,7 +211,122 @@ class AuthService {
           await logout();
         }
 
-        return {"success": false, "message": msg};
+        return {
+          "success": false,
+          "message": msg,
+          "statusCode": response.statusCode,
+          "code": code,
+          "requiresOtp": requiresOtp,
+        };
+      }
+    } on TimeoutException {
+      return {
+        "success": false,
+        "message": "Quá thời gian chờ phản hồi từ máy chủ (10s). Vui lòng thử lại.",
+      };
+    } catch (e) {
+      return {"success": false, "message": "Lỗi kết nối máy chủ: $e"};
+    }
+  }
+
+  /// Đăng nhập bằng đặc trưng khuôn mặt đối chiếu trên máy chủ
+  Future<Map<String, dynamic>> loginWithFace(
+    String username,
+    Map<String, dynamic> features,
+  ) async {
+    try {
+      final Map<String, dynamic> body = {
+        "username": username.trim(),
+        "features": features,
+        "faceVectorJson": jsonEncode(features),
+      };
+
+      final response = await http
+          .post(
+            Uri.parse(loginFaceUrl),
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(requestTimeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          if (data.containsKey('status') && data['status'] == false) {
+            return {
+              "success": false,
+              "message": data['message'] ?? 'Đăng nhập khuôn mặt không thành công',
+            };
+          }
+
+          final String? token = data['token'];
+          if (token == null || token.isEmpty) {
+            return {
+              "success": false,
+              "message": data['message'] ?? 'Không nhận được token xác thực',
+            };
+          }
+
+          Map<String, dynamic> decodedToken = JwtDecoder.decode(token);
+          final dynamic rawRole = decodedToken['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
+              decodedToken['role'] ??
+              decodedToken['roles'];
+
+          String role = 'User';
+          if (rawRole is List && rawRole.isNotEmpty) {
+            role = rawRole.first.toString();
+          } else if (rawRole != null) {
+            role = rawRole.toString();
+          }
+
+          final dynamic rawName = decodedToken['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'] ??
+              decodedToken['name'] ??
+              decodedToken['unique_name'] ??
+              decodedToken['sub'] ??
+              username;
+
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          await prefs.setString('jwt_token', token);
+          await prefs.setString('user_role', role);
+          await prefs.setString('user_name', rawName.toString());
+
+          return {
+            "success": true,
+            "token": token,
+            "role": role,
+            "decodedToken": decodedToken,
+            "message": data['message'] ?? 'Đăng nhập bằng khuôn mặt thành công',
+          };
+        }
+        return {"success": false, "message": "Định dạng dữ liệu phản hồi không đúng"};
+      } else {
+        String msg = "Đăng nhập thất bại: mã lỗi ${response.statusCode}";
+        String? code;
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map) {
+            if (data['message'] != null) {
+              msg = data['message'].toString();
+            }
+            if (data['code'] != null) {
+              code = data['code'].toString();
+            }
+          }
+        } catch (_) {}
+
+        if (response.statusCode == 401) {
+          await logout();
+        }
+
+        return {
+          "success": false,
+          "message": msg,
+          "statusCode": response.statusCode,
+          "code": code,
+        };
       }
     } on TimeoutException {
       return {

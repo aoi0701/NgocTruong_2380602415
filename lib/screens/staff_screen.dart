@@ -425,7 +425,7 @@ class _StaffScreenState extends State<StaffScreen> {
               // Card 4: Chấm công & Điểm danh QR / GPS
               _buildFeatureCard(
                 title: 'Chấm công nâng cao',
-                subtitle: 'Chọn khuôn mặt, mã QR hoặc vị trí GPS để chấm công.',
+                subtitle: 'Chấm công khuôn mặt, mã QR hoặc chia sẻ vị trí.',
                 icon: Icons.qr_code_scanner_rounded,
                 color: Colors.purple,
                 buttonText: 'Chọn cách chấm công',
@@ -498,10 +498,10 @@ class _StaffScreenState extends State<StaffScreen> {
                               ),
                             ),
                             title: const Text(
-                              '2. Điểm danh định vị GPS thực tế',
+                              'Chia sẻ vị trí',
                             ),
                             subtitle: const Text(
-                              'Xác thực khoảng cách tại địa điểm làm việc',
+                              'Xem tọa độ trên bản đồ và chia sẻ qua các ứng dụng',
                             ),
                             onTap: () async {
                               Navigator.pop(ctx);
@@ -890,7 +890,7 @@ class _StaffScreenState extends State<StaffScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Lịch sử chấm công SQL Server',
+              'Lịch sử chấm công',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             if (_historyList.isNotEmpty)

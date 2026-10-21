@@ -22,6 +22,14 @@ class Auth {
     return await _authService.login(username, password, otp: otp);
   }
 
+  /// Đăng nhập bằng khuôn mặt đối chiếu trên máy chủ
+  static Future<Map<String, dynamic>> loginWithFace(
+    String username,
+    Map<String, dynamic> features,
+  ) async {
+    return await _authService.loginWithFace(username, features);
+  }
+
   /// Đăng ký tài khoản mới (Chỉ cho phép User hoặc Staff)
   static Future<Map<String, dynamic>> register({
     required String username,

@@ -198,6 +198,22 @@ class Employee {
     this.initials,
   });
 
+  Employee copyWith({
+    String? id,
+    String? userName,
+    String? email,
+    String? role,
+    String? initials,
+  }) {
+    return Employee(
+      id: id ?? this.id,
+      userName: userName ?? this.userName,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      initials: initials ?? this.initials,
+    );
+  }
+
   factory Employee.fromJson(Map<String, dynamic> json) {
     // Role could be in 'role', 'Role', 'roles' array, etc.
     String parsedRole = 'User';

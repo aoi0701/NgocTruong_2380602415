@@ -147,32 +147,51 @@ public sealed class ApiContractTests
         using var app = database.Open();
         using var client = app.CreateClient();
 
-        // 1. Đăng nhập đúng user/pass nhưng THIẾU OTP -> 400 BadRequest
-        var noOtpRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
+        // 1. Admin đăng nhập không cần OTP (dù qua username hay email) -> 200 OK thành công ngay
+        var adminNoOtpRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
         {
             username = "admin",
             password = "Admin@123456"
         });
-        Assert.Equal(HttpStatusCode.BadRequest, noOtpRes.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, adminNoOtpRes.StatusCode);
+        var adminBody = await Read(adminNoOtpRes);
+        Assert.True(adminBody.GetProperty("status").GetBoolean());
+        Assert.NotNull(adminBody.GetProperty("token").GetString());
+        Assert.Equal("Admin", adminBody.GetProperty("role").GetString());
 
-        // 2. Yêu cầu sinh mã OTP hợp lệ
-        await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username = "admin" });
-
-        // 3. Đăng nhập với SAI OTP -> 400 BadRequest
-        var wrongOtpRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
+        var adminEmailRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
         {
-            username = "admin",
-            password = "Admin@123456",
+            username = "admin@example.com",
+            password = "Admin@123456"
+        });
+        Assert.Equal(HttpStatusCode.OK, adminEmailRes.StatusCode);
+
+        // 2. Staff hoặc User đăng nhập đúng tài khoản nhưng thiếu OTP -> 400 BadRequest kèm code "OTP_REQUIRED"
+        var staffNoOtpRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
+        {
+            username = "staff",
+            password = "Staff@123456"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, staffNoOtpRes.StatusCode);
+        var staffNoOtpBody = await Read(staffNoOtpRes);
+        Assert.False(staffNoOtpBody.GetProperty("status").GetBoolean());
+        Assert.Equal("OTP_REQUIRED", staffNoOtpBody.GetProperty("code").GetString());
+        Assert.True(staffNoOtpBody.GetProperty("requiresOtp").GetBoolean());
+
+        // 3. Staff đăng nhập với SAI OTP -> 400 BadRequest
+        var staffWrongOtpRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
+        {
+            username = "staff",
+            password = "Staff@123456",
             otp = "000000"
         });
-        Assert.Equal(HttpStatusCode.BadRequest, wrongOtpRes.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, staffWrongOtpRes.StatusCode);
 
         // 4. Đăng nhập với sai password -> 401 Unauthorized
         var wrongPassRes = await client.PostAsJsonAsync("/api/Authenticate/login", new
         {
             username = "admin",
-            password = "IncorrectPassword",
-            otp = "000000"
+            password = "IncorrectPassword"
         });
         Assert.Equal(HttpStatusCode.Unauthorized, wrongPassRes.StatusCode);
     }

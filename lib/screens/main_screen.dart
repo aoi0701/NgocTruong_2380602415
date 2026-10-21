@@ -246,12 +246,12 @@ class _MainScreenState extends State<MainScreen> {
           const SizedBox(height: 16),
 
           _buildFeatureCard(
-            title: 'Chấm công bằng vị trí GPS',
+            title: 'Chia sẻ vị trí',
             subtitle:
-                'Xác thực vị trí tại địa điểm làm việc để chấm công vào ca hoặc ra ca.',
+                'Xem vị trí hiện tại trên bản đồ và chia sẻ qua các ứng dụng.',
             icon: Icons.location_on_rounded,
             color: Colors.teal,
-            buttonText: 'Mở Định vị GPS',
+            buttonText: 'Mở Chia sẻ vị trí',
             onTap: () {
               Navigator.push(
                 context,

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -294,9 +293,9 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
         _isLoadingActiveQr = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã tạo mã QR chuẩn: $code'),
-          backgroundColor: Colors.green[700],
+        const SnackBar(
+          content: Text('Đã sinh mã QR chuẩn'),
+          backgroundColor: Colors.green,
         ),
       );
     } catch (_) {
@@ -570,31 +569,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _qrDataController,
-                  decoration: InputDecoration(
-                    labelText: 'Nội dung mã QR điểm danh',
-                    border: const OutlineInputBorder(),
-                    hintText: 'HUTECH_ATTENDANCE_QR_...',
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.copy),
-                      tooltip: 'Sao chép mã',
-                      onPressed: () {
-                        Clipboard.setData(
-                          ClipboardData(text: _qrDataController.text),
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Đã sao chép mã QR vào bộ nhớ tạm'),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  onChanged: (val) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
                   height: 48,
@@ -617,16 +592,8 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                             ),
                           )
                         : const Icon(Icons.sync_rounded),
-                    label: const Text(
-                      'Lấy / Sinh mã QR Chuẩn (HUTECH_ATTENDANCE_QR_...)',
-                    ),
+                    label: const Text('Sinh mã QR chuẩn'),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Mã QR hợp lệ có tiền tố HUTECH_ATTENDANCE_QR_ phục vụ cho các điểm danh tại cơ sở. '
-                  'Admin có thể in mã này hoặc hiển thị trên màn hình tại quầy lễ tân để nhân viên quét.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],
             ),

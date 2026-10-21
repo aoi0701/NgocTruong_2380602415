@@ -109,7 +109,7 @@ void main() {
       expect(find.text('Chợ sản phẩm (MarketScreen)'), findsNothing);
       expect(find.text('Bảng tin bài đăng (FeedScreen)'), findsNothing);
       expect(find.text('Chấm công bằng mã QR'), findsOneWidget);
-      expect(find.text('Chấm công bằng vị trí GPS'), findsOneWidget);
+      expect(find.text('Chia sẻ vị trí'), findsOneWidget);
     });
 
     testWidgets(
@@ -136,23 +136,45 @@ void main() {
       },
     );
 
-    testWidgets('LoginScreen blocks login when OTP is missing', (tester) async {
+    testWidgets('LoginScreen shows Admin does not require OTP and allows submitting credentials', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
       await tester.pump();
 
+      // Kiểm tra ô OTP có ghi chú Admin không cần OTP
+      expect(find.text('Tài khoản Admin không cần nhập mã OTP'), findsOneWidget);
+
       // Nhập username và mật khẩu nhưng bỏ trống OTP
-      await tester.enterText(find.byType(TextField).at(0), 'testuser');
+      await tester.enterText(find.byType(TextField).at(0), 'admin');
       await tester.enterText(find.byType(TextField).at(1), 'password123');
 
-      // Bấm nút Đăng nhập
+      // Bấm nút Đăng nhập -> không bị client chặn trước bởi "Vui lòng nhập mã OTP để xác thực đăng nhập"
       await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
       await tester.pump();
 
-      // Bắt buộc phải có mã OTP gửi về email mới cho phép đăng nhập
       expect(
         find.text(
           'Vui lòng nhập mã OTP để xác thực đăng nhập',
         ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('LoginScreen renders Face Login button and requires username before face capture', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+      await tester.pump();
+
+      // Nút đăng nhập bằng khuôn mặt hiển thị
+      final faceLoginBtn = find.text('Đăng nhập bằng khuôn mặt');
+      expect(faceLoginBtn, findsOneWidget);
+
+      // Bấm nút khi chưa nhập username
+      await tester.ensureVisible(faceLoginBtn);
+      await tester.tap(faceLoginBtn);
+      await tester.pump();
+
+      // Hiển thị thông báo yêu cầu nhập tên đăng nhập trước
+      expect(
+        find.text('Vui lòng nhập Tên đăng nhập trước khi quét khuôn mặt'),
         findsOneWidget,
       );
     });

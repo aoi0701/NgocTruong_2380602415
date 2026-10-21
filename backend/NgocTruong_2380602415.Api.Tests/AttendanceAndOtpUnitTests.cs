@@ -42,6 +42,9 @@ public class AttendanceAndOtpUnitTests
         using var app = database.Open(simulateEmailFailure: true);
         using var client = app.CreateClient();
 
+        var otpService = app.Services.GetRequiredService<IOtpService>();
+        otpService.ResetCooldownForTesting("admin");
+
         var response = await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username = "admin" });
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
 
@@ -51,7 +54,6 @@ public class AttendanceAndOtpUnitTests
             "Không thể gửi email OTP: Dịch vụ email chưa được cấu hình hoặc gặp sự cố kết nối SMTP. Vui lòng kiểm tra cấu hình SmtpSettings trong appsettings.json.",
             body.GetProperty("message").GetString());
 
-        var otpService = app.Services.GetRequiredService<IOtpService>();
         Assert.Null(otpService.GetActiveOtpForTesting("admin"));
     }
 
