@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NgocTruong_2380602415.Api.Data;
 using NgocTruong_2380602415.Api.Services;
@@ -38,21 +39,17 @@ internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Pr
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LocalOtp:Enabled"] = "false"
+            }));
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<DbContextOptions<ApplicationDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<ApplicationDbContext>>();
             services.RemoveAll<ApplicationDbContext>();
             services.AddDbContext<ApplicationDbContext>(options =>
-            {
-                options.UseSqlite($"Data Source={databasePath};Pooling=False");
-                options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-            });
-
-            services.RemoveAll<DbContextOptions<PracticeDbContext>>();
-            services.RemoveAll<IDbContextOptionsConfiguration<PracticeDbContext>>();
-            services.RemoveAll<PracticeDbContext>();
-            services.AddDbContext<PracticeDbContext>(options =>
             {
                 options.UseSqlite($"Data Source={databasePath};Pooling=False");
                 options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));

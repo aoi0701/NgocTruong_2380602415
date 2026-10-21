@@ -27,24 +27,28 @@ class Auth {
     required String username,
     required String email,
     required String password,
-    required String initials,
-    required String role,
+    String initials = '',
+    String role = 'User',
   }) async {
     final cleanRole = role.trim();
     final Map<String, dynamic> body = {
       "username": username.trim(),
       "email": email.trim(),
       "password": password,
-      "initials": initials.trim(),
+      if (initials.trim().isNotEmpty) "initials": initials.trim(),
       "role": cleanRole,
     };
 
     try {
-      final response = await _apiClient.post('Authenticate/register', body: body);
+      final response = await _apiClient.post(
+        'Authenticate/register',
+        body: body,
+      );
       if (response.statusCode == 200 || response.statusCode == 201) {
         final result = jsonDecode(response.body);
         if (result is Map<String, dynamic>) {
-          final bool isSuccess = result['success'] == true ||
+          final bool isSuccess =
+              result['success'] == true ||
               result['status'] == true ||
               result['status']?.toString().toLowerCase() == 'success' ||
               result['isSuccess'] == true;
@@ -54,22 +58,17 @@ class Auth {
             'message': result['message'] ?? 'Đăng ký thành công.',
           };
         }
-        return {
-          'success': true,
-          'message': 'Đăng ký thành công.',
-        };
+        return {'success': true, 'message': 'Đăng ký thành công.'};
       } else {
-        String msg = 'Đăng ký thất bại, vui lòng thử lại (${response.statusCode}).';
+        String msg =
+            'Đăng ký thất bại, vui lòng thử lại (${response.statusCode}).';
         try {
           final result = jsonDecode(response.body);
           if (result is Map<String, dynamic> && result['message'] != null) {
             msg = result['message'].toString();
           }
         } catch (_) {}
-        return {
-          'success': false,
-          'message': msg,
-        };
+        return {'success': false, 'message': msg};
       }
     } catch (e) {
       return {
@@ -108,7 +107,8 @@ class Auth {
               : 'Đăng ký mẫu khuôn mặt thành công.',
         };
       } else {
-        String msg = 'Không thể đồng bộ mẫu lên máy chủ (${response.statusCode})';
+        String msg =
+            'Không thể đồng bộ mẫu lên máy chủ (${response.statusCode})';
         try {
           final dynamic decoded = jsonDecode(response.body);
           if (decoded is Map && decoded['message'] != null) {
@@ -136,11 +136,7 @@ class Auth {
       final response = await _apiClient.getFaceProfile(username);
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
-        return {
-          'success': true,
-          'statusCode': 200,
-          'data': decoded,
-        };
+        return {'success': true, 'statusCode': 200, 'data': decoded};
       } else {
         String msg = 'Không tìm thấy mẫu khuôn mặt (${response.statusCode})';
         try {
@@ -183,7 +179,8 @@ class Auth {
       try {
         if (!JwtDecoder.isExpired(token)) {
           final decoded = JwtDecoder.decode(token);
-          final dynamic rawRole = decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
+          final dynamic rawRole =
+              decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
               decoded['role'] ??
               decoded['roles'];
           if (rawRole is List && rawRole.isNotEmpty) {
@@ -211,7 +208,8 @@ class Auth {
       try {
         if (!JwtDecoder.isExpired(token)) {
           final decoded = JwtDecoder.decode(token);
-          final dynamic raw = decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'] ??
+          final dynamic raw =
+              decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'] ??
               decoded['name'] ??
               decoded['unique_name'] ??
               decoded['sub'];

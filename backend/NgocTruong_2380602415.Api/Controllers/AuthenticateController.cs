@@ -83,7 +83,9 @@ public class AuthenticateController : ControllerBase
         return Ok(new
         {
             Status = true,
-            Message = "Mã xác thực OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.",
+            Message = _otpService.IsLocalMode
+                ? "Đã tạo yêu cầu OTP. Vui lòng nhập mã xác thực để đăng nhập."
+                : "Mã xác thực OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.",
             ExpiresInSeconds = 300
         });
     }

@@ -6,6 +6,7 @@ namespace NgocTruong_2380602415.Api.Services;
 public class OtpItem
 {
     public string Code { get; set; } = string.Empty;
+    public string[] AcceptedCodes { get; set; } = [];
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
     public int FailedAttempts { get; set; }
@@ -18,11 +19,24 @@ public class OtpService : IOtpService
     private static readonly object _validateLock = new();
     private readonly IEmailService _emailService;
     private readonly ILogger<OtpService> _logger;
+    private readonly string[] _localCodes;
+    public bool IsLocalMode { get; }
 
-    public OtpService(IEmailService emailService, ILogger<OtpService> logger)
+    public OtpService(IEmailService emailService, ILogger<OtpService> logger,
+        IConfiguration? configuration = null, IHostEnvironment? environment = null)
     {
         _emailService = emailService;
         _logger = logger;
+        IsLocalMode = environment?.IsDevelopment() == true
+            && configuration?.GetValue<bool>("LocalOtp:Enabled") == true;
+        _localCodes = IsLocalMode
+            ? configuration!.GetSection("LocalOtp:Codes").Get<string[]>() ?? []
+            : [];
+        if (IsLocalMode && (_localCodes.Length != 5 || _localCodes.Distinct().Count() != 5
+            || _localCodes.Any(code => code.Length != 6 || code.Any(c => c < '0' || c > '9'))))
+            throw new InvalidOperationException("LocalOtp requires exactly five distinct six-digit codes.");
+        if (IsLocalMode)
+            _logger.LogWarning("Local OTP testing is enabled in Development; email delivery is disabled.");
     }
 
     public (bool CanSend, string? ErrorMessage, int? CooldownRemainingSeconds) CheckCooldown(string username)
@@ -49,15 +63,18 @@ public class OtpService : IOtpService
         var key = username.Trim();
 
         // Tạo mã số OTP 6 chữ số ngẫu nhiên bằng bộ sinh số an toàn
-        var otpCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString("D6");
+        var otpCode = IsLocalMode ? _localCodes[0]
+            : RandomNumberGenerator.GetInt32(100000, 1000000).ToString("D6");
         var now = DateTime.UtcNow;
 
-        // BẮT BUỘC: Gửi email trước. Nếu email thất bại (ném exception), OTP TUYỆT ĐỐI KHÔNG được lưu vào bộ nhớ!
-        await _emailService.SendOtpEmailAsync(email, key, otpCode, cancellationToken);
+        // Normal mode stores a code only after successful email delivery.
+        if (!IsLocalMode)
+            await _emailService.SendOtpEmailAsync(email, key, otpCode, cancellationToken);
 
         var item = new OtpItem
         {
             Code = otpCode,
+            AcceptedCodes = IsLocalMode ? _localCodes.ToArray() : [otpCode],
             CreatedAt = now,
             ExpiresAt = now.AddMinutes(5), // Hạn sử dụng 5 phút
             FailedAttempts = 0,
@@ -69,7 +86,7 @@ public class OtpService : IOtpService
             _otpStore[key] = item;
         }
 
-        _logger.LogInformation("Đã gửi email OTP thành công và khởi tạo OTP mới cho tài khoản '{Username}', hết hạn lúc {ExpiresAt}", key, item.ExpiresAt);
+        _logger.LogInformation("OTP request created for '{Username}', expires at {ExpiresAt}; LocalMode={LocalMode}", key, item.ExpiresAt, IsLocalMode);
 
         return otpCode;
     }
@@ -100,7 +117,7 @@ public class OtpService : IOtpService
             }
 
             // Kiểm tra mã OTP khớp hay sai
-            if (!string.Equals(item.Code, code, StringComparison.Ordinal))
+            if (!item.AcceptedCodes.Contains(code, StringComparer.Ordinal))
             {
                 item.FailedAttempts++;
                 if (item.FailedAttempts >= 3)

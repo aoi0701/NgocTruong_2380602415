@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace NgocTruong_2380602415.Api.Models;
 
+// Historical schema entity retained for existing databases and EF migrations only.
 public class Category
 {
     public int Id { get; set; }

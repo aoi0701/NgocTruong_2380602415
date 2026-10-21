@@ -4,11 +4,9 @@ import '../models/attendance.dart';
 import '../services/attendance_service.dart';
 import '../utils/auth.dart';
 import 'login_screen.dart';
-import 'market_screen.dart';
-import 'feed_screen.dart';
-import '../HomeScreen.dart';
 import 'biometric_qr_screen.dart';
 import 'location_share_screen.dart';
+import 'face_auth_screen.dart';
 import '../widgets/post_shift_feedback_dialog.dart';
 
 class StaffScreen extends StatefulWidget {
@@ -137,7 +135,9 @@ class _StaffScreenState extends State<StaffScreen> {
     if (_openShift != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Bạn đang trong ca trực rồi! Vui lòng Ra ca trước khi bắt đầu ca mới.'),
+          content: Text(
+            'Bạn đang trong ca trực rồi! Vui lòng Ra ca trước khi bắt đầu ca mới.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -332,7 +332,9 @@ class _StaffScreenState extends State<StaffScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Đăng xuất'),
-        content: const Text('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản nhân viên?'),
+        content: const Text(
+          'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản nhân viên?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -341,7 +343,10 @@ class _StaffScreenState extends State<StaffScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Đăng xuất', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Đăng xuất',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -412,71 +417,25 @@ class _StaffScreenState extends State<StaffScreen> {
 
               // Khu vực tác nghiệp khác
               const Text(
-                'Khu vực tác nghiệp nhân viên',
+                'Phương thức chấm công',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
 
-              // Card 1: Chợ sản phẩm
-              _buildFeatureCard(
-                title: 'Quản lý Sản phẩm (MarketScreen)',
-                subtitle: 'Tra cứu, xem thông tin chi tiết theo ID, cập nhật giá và thêm sản phẩm mới vào danh mục.',
-                icon: Icons.storefront_rounded,
-                color: Colors.teal,
-                buttonText: 'Mở Chợ sản phẩm',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MarketScreen()),
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Card 2: Bảng tin bài viết
-              _buildFeatureCard(
-                title: 'Kiểm duyệt Bảng tin (FeedScreen)',
-                subtitle: 'Xem các bài đăng của sinh viên/khách hàng, tương tác và quản lý nội dung bài viết.',
-                icon: Icons.dynamic_feed_rounded,
-                color: Colors.indigo,
-                buttonText: 'Mở Bảng tin',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const FeedScreen()),
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Card 3: Tiện ích HUTECH
-              _buildFeatureCard(
-                title: 'Bộ tiện ích HUTECH',
-                subtitle: 'Mở bộ công cụ phụ trợ (Chuyển đổi nhiệt độ/đơn vị, Báo thức, Bấm giờ, Dịch thuật).',
-                icon: Icons.construction_rounded,
-                color: Colors.deepOrange,
-                buttonText: 'Mở Tiện ích',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-
               // Card 4: Chấm công & Điểm danh QR / GPS
               _buildFeatureCard(
-                title: 'Chấm công nâng cao (QR & GPS)',
-                subtitle: 'Quét mã QR địa điểm làm việc hoặc xác thực tọa độ GPS thời gian thực.',
+                title: 'Chấm công nâng cao',
+                subtitle: 'Chọn khuôn mặt, mã QR hoặc vị trí GPS để chấm công.',
                 icon: Icons.qr_code_scanner_rounded,
                 color: Colors.purple,
-                buttonText: 'Mở Quét QR / GPS',
+                buttonText: 'Chọn cách chấm công',
                 onTap: () {
                   showModalBottomSheet(
                     context: context,
                     shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      ),
                     ),
                     builder: (ctx) => SafeArea(
                       child: Column(
@@ -484,16 +443,48 @@ class _StaffScreenState extends State<StaffScreen> {
                         children: [
                           ListTile(
                             leading: const CircleAvatar(
-                              backgroundColor: Colors.purple,
-                              child: Icon(Icons.qr_code_scanner, color: Colors.white),
+                              backgroundColor: Colors.blue,
+                              child: Icon(
+                                Icons.face_rounded,
+                                color: Colors.white,
+                              ),
                             ),
-                            title: const Text('1. Quét mã QR chấm công địa điểm'),
-                            subtitle: const Text('Nhận diện mã điểm danh bằng camera máy ảnh'),
+                            title: const Text('Chấm công khuôn mặt'),
+                            subtitle: const Text(
+                              'Đăng ký mẫu, xác nhận vào ca hoặc ra ca',
+                            ),
                             onTap: () async {
                               Navigator.pop(ctx);
                               await Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+                                MaterialPageRoute(
+                                  builder: (_) => const FaceAuthScreen(),
+                                ),
+                              );
+                              if (mounted) _fetchAttendanceHistory();
+                            },
+                          ),
+                          ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.purple,
+                              child: Icon(
+                                Icons.qr_code_scanner,
+                                color: Colors.white,
+                              ),
+                            ),
+                            title: const Text(
+                              '1. Quét mã QR chấm công địa điểm',
+                            ),
+                            subtitle: const Text(
+                              'Nhận diện mã điểm danh bằng camera máy ảnh',
+                            ),
+                            onTap: () async {
+                              Navigator.pop(ctx);
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const BiometricQrScreen(),
+                                ),
                               );
                               _fetchAttendanceHistory();
                             },
@@ -501,15 +492,24 @@ class _StaffScreenState extends State<StaffScreen> {
                           ListTile(
                             leading: const CircleAvatar(
                               backgroundColor: Colors.teal,
-                              child: Icon(Icons.location_on, color: Colors.white),
+                              child: Icon(
+                                Icons.location_on,
+                                color: Colors.white,
+                              ),
                             ),
-                            title: const Text('2. Điểm danh định vị GPS thực tế'),
-                            subtitle: const Text('Xác thực khoảng cách tại cơ sở Trường ĐH HUTECH'),
+                            title: const Text(
+                              '2. Điểm danh định vị GPS thực tế',
+                            ),
+                            subtitle: const Text(
+                              'Xác thực khoảng cách tại địa điểm làm việc',
+                            ),
                             onTap: () async {
                               Navigator.pop(ctx);
                               await Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => const LocationShareScreen()),
+                                MaterialPageRoute(
+                                  builder: (_) => const LocationShareScreen(),
+                                ),
                               );
                               _fetchAttendanceHistory();
                             },
@@ -582,7 +582,8 @@ class _StaffScreenState extends State<StaffScreen> {
   /// Khối Ca làm việc với quy tắc Single Open Shift
   Widget _buildShiftControlCard() {
     final now = DateTime.now();
-    final dateStr = 'Ngày ${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+    final dateStr =
+        'Ngày ${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
     final bool hasOpenShift = _openShift != null;
     final activeRecord = _openShift ?? _todayRecord;
@@ -615,40 +616,56 @@ class _StaffScreenState extends State<StaffScreen> {
                 Row(
                   children: [
                     Icon(
-                      hasOpenShift ? Icons.radio_button_checked : Icons.access_time_filled,
-                      color: hasOpenShift ? Colors.green[700] : Colors.teal[800],
+                      hasOpenShift
+                          ? Icons.radio_button_checked
+                          : Icons.access_time_filled,
+                      color: hasOpenShift
+                          ? Colors.green[700]
+                          : Colors.teal[800],
                       size: 22,
                     ),
                     const SizedBox(width: 8),
                     const Text(
                       'Trạng thái ca làm việc',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: hasOpenShift
                         ? Colors.green.withValues(alpha: 0.15)
                         : (activeRecord?.isCompleted == true
-                            ? Colors.blue.withValues(alpha: 0.15)
-                            : Colors.grey.withValues(alpha: 0.15)),
+                              ? Colors.blue.withValues(alpha: 0.15)
+                              : Colors.grey.withValues(alpha: 0.15)),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: hasOpenShift
                           ? Colors.green[700]!
-                          : (activeRecord?.isCompleted == true ? Colors.blue[700]! : Colors.grey),
+                          : (activeRecord?.isCompleted == true
+                                ? Colors.blue[700]!
+                                : Colors.grey),
                     ),
                   ),
                   child: Text(
                     hasOpenShift
                         ? '🟢 ĐANG TRONG CA TRỰC'
-                        : (activeRecord?.isCompleted == true ? 'ĐÃ HOÀN THÀNH CA' : 'CHƯA VÀO CA'),
+                        : (activeRecord?.isCompleted == true
+                              ? 'ĐÃ HOÀN THÀNH CA'
+                              : 'CHƯA VÀO CA'),
                     style: TextStyle(
                       color: hasOpenShift
                           ? Colors.green[800]
-                          : (activeRecord?.isCompleted == true ? Colors.blue[800] : Colors.grey[700]),
+                          : (activeRecord?.isCompleted == true
+                                ? Colors.blue[800]
+                                : Colors.grey[700]),
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -667,7 +684,10 @@ class _StaffScreenState extends State<StaffScreen> {
             if (hasOpenShift) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                  horizontal: 16,
+                ),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -681,7 +701,11 @@ class _StaffScreenState extends State<StaffScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.timer_outlined, color: Colors.green[800], size: 20),
+                        Icon(
+                          Icons.timer_outlined,
+                          color: Colors.green[800],
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'THỜI GIAN LÀM VIỆC HIỆN TẠI',
@@ -708,7 +732,11 @@ class _StaffScreenState extends State<StaffScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Giờ vào ca: ${_openShift!.formattedCheckIn}',
-                      style: TextStyle(color: Colors.teal[800], fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: Colors.teal[800],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -774,25 +802,39 @@ class _StaffScreenState extends State<StaffScreen> {
                             foregroundColor: Colors.white,
                             disabledForegroundColor: Colors.grey[600],
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           icon: const Icon(Icons.login_rounded, size: 18),
-                          label: const Text('Vào ca (Check-in)', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text(
+                            'Vào ca (Check-in)',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       // Nút Ra ca: KÍCH HOẠT khi ĐANG có ca mở, VÔ HIỆU HÓA khi CHƯA có ca mở
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: hasOpenShift ? _handleCheckOut : _showNotCheckedInDialog,
+                          onPressed: hasOpenShift
+                              ? _handleCheckOut
+                              : _showNotCheckedInDialog,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: hasOpenShift ? Colors.orange[800] : Colors.grey[400],
+                            backgroundColor: hasOpenShift
+                                ? Colors.orange[800]
+                                : Colors.grey[400],
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           icon: const Icon(Icons.logout_rounded, size: 18),
-                          label: const Text('Ra ca (Check-out)', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text(
+                            'Ra ca (Check-out)',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                     ],
@@ -805,7 +847,9 @@ class _StaffScreenState extends State<StaffScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 11,
-                      color: hasOpenShift ? Colors.green[800] : Colors.grey[600],
+                      color: hasOpenShift
+                          ? Colors.green[800]
+                          : Colors.grey[600],
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -852,7 +896,10 @@ class _StaffScreenState extends State<StaffScreen> {
             if (_historyList.isNotEmpty)
               Text(
                 '${_historyList.length} lượt',
-                style: TextStyle(color: Colors.teal[800], fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.teal[800],
+                  fontWeight: FontWeight.bold,
+                ),
               ),
           ],
         ),
@@ -900,7 +947,11 @@ class _StaffScreenState extends State<StaffScreen> {
             ),
             child: Column(
               children: [
-                Icon(Icons.history_toggle_off, size: 40, color: Colors.grey[400]),
+                Icon(
+                  Icons.history_toggle_off,
+                  size: 40,
+                  color: Colors.grey[400],
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'Chưa có dữ liệu chấm công nào trên máy chủ.',
@@ -960,18 +1011,28 @@ class _StaffScreenState extends State<StaffScreen> {
                     children: [
                       Text(
                         record.formattedCheckIn,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: (record.isCompleted ? Colors.blue : Colors.orange).withValues(alpha: 0.15),
+                          color:
+                              (record.isCompleted ? Colors.blue : Colors.orange)
+                                  .withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           record.isCompleted ? 'Hoàn thành' : 'Đang trực',
                           style: TextStyle(
-                            color: record.isCompleted ? Colors.blue[800] : Colors.orange[900],
+                            color: record.isCompleted
+                                ? Colors.blue[800]
+                                : Colors.orange[900],
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -984,7 +1045,8 @@ class _StaffScreenState extends State<StaffScreen> {
                     'Ra ca: ${record.formattedCheckOut} • ${record.durationText}',
                     style: TextStyle(color: Colors.grey[700], fontSize: 12),
                   ),
-                  if (record.locationName != null && record.locationName!.isNotEmpty)
+                  if (record.locationName != null &&
+                      record.locationName!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2.0),
                       child: Text(
@@ -994,15 +1056,22 @@ class _StaffScreenState extends State<StaffScreen> {
                         style: TextStyle(color: Colors.grey[500], fontSize: 11),
                       ),
                     ),
-                  if (record.feedbackMood != null && record.feedbackMood!.isNotEmpty)
+                  if (record.feedbackMood != null &&
+                      record.feedbackMood!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 6.0),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.amber.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber[700]!, width: 0.5),
+                          border: Border.all(
+                            color: Colors.amber[700]!,
+                            width: 0.5,
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1015,7 +1084,8 @@ class _StaffScreenState extends State<StaffScreen> {
                                 color: Colors.amber[900],
                               ),
                             ),
-                            if (record.feedbackNote != null && record.feedbackNote!.isNotEmpty) ...[
+                            if (record.feedbackNote != null &&
+                                record.feedbackNote!.isNotEmpty) ...[
                               const SizedBox(width: 6),
                               Flexible(
                                 child: Text(
@@ -1084,7 +1154,11 @@ class _StaffScreenState extends State<StaffScreen> {
             const SizedBox(height: 10),
             Text(
               subtitle,
-              style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.3),
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 13,
+                height: 1.3,
+              ),
             ),
             const SizedBox(height: 12),
             SizedBox(

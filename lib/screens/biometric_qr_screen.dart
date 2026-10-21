@@ -1,36 +1,56 @@
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../config/config_url.dart';
-import '../models/productPost.dart';
-import '../services/api_client.dart';
 import '../services/attendance_service.dart';
-import 'main_screen.dart';
+import '../widgets/post_shift_feedback_dialog.dart';
+
+enum _QrAction { checkIn, checkOut }
 
 class BiometricQrScreen extends StatefulWidget {
-  const BiometricQrScreen({super.key});
+  const BiometricQrScreen({
+    super.key,
+    this.attendanceService,
+    this.scannerController,
+    this.scannerBuilder,
+  });
+
+  final AttendanceService? attendanceService;
+  final MobileScannerController? scannerController;
+  final Widget Function(
+    BuildContext context,
+    MobileScannerController controller,
+    void Function(BarcodeCapture) onDetect,
+  )?
+  scannerBuilder;
 
   @override
   State<BiometricQrScreen> createState() => _BiometricQrScreenState();
 }
 
 class _BiometricQrScreenState extends State<BiometricQrScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
-  final LocalAuthentication _auth = LocalAuthentication();
-  final MobileScannerController _scannerController = MobileScannerController();
+  late final MobileScannerController _scannerController;
+  AttendanceService get _attendanceService =>
+      widget.attendanceService ?? AttendanceService.instance;
   final ImagePicker _picker = ImagePicker();
-  final ApiClient _apiClient = ApiClient(baseUrl: Config_URL.baseUrl);
 
-  String _biometricStatus = 'Chưa quét vân tay';
   String _scannedResult = 'Chưa có mã nào được quét';
   bool _isHandlingScan = false;
-  DateTime _lastScanTimestamp = DateTime.fromMillisecondsSinceEpoch(0);
+  _QrAction? _selectedAction;
+  bool _scanArmed = false;
+  bool _foreground = true;
+  Future<void> _cameraOperation = Future<void>.value();
+
+  bool get _canScan =>
+      mounted &&
+      _foreground &&
+      _tabController.index == 0 &&
+      _scanArmed &&
+      !_isHandlingScan;
 
   final TextEditingController _qrDataController = TextEditingController(
     text: 'HUTECH_ATTENDANCE_QR_CAMPUS_E_MAIN',
@@ -40,388 +60,234 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _scannerController =
+        widget.scannerController ??
+        MobileScannerController(
+          autoStart: false,
+          formats: [BarcodeFormat.qrCode],
+        );
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
-    _scannerController.dispose();
+    // Complete any in-flight camera operation before releasing the controller.
+    unawaited(
+      _cameraOperation
+          .then((_) async {
+            try {
+              await _scannerController.stop();
+            } finally {
+              if (widget.scannerController == null) {
+                await _scannerController.dispose();
+              }
+            }
+          })
+          .catchError((Object _) {}),
+    );
     _qrDataController.dispose();
     super.dispose();
   }
 
-  // ============================================================================
-  // 1. CẢM BIẾN SINH TRẮC HỌC & VÂN TAY (local_auth)
-  // ============================================================================
-  Future<void> _authenticateWithBiometrics() async {
-    try {
-      final bool canCheck = await _auth.canCheckBiometrics;
-      final bool isDeviceSupported = await _auth.isDeviceSupported();
-
-      if (!canCheck && !isDeviceSupported) {
-        setState(() {
-          _biometricStatus =
-              'Thiết bị không hỗ trợ cảm biến sinh trắc học hoặc chưa thiết lập vân tay/PIN.';
-        });
-        return;
-      }
-
-      final bool didAuthenticate = await _auth.authenticate(
-        localizedReason:
-            'Vui lòng chạm cảm biến vân tay hoặc nhập mã PIN của thiết bị',
-        biometricOnly: false,
-        persistAcrossBackgrounding: true,
-      );
-
-      setState(() {
-        _biometricStatus = didAuthenticate
-            ? '✅ Xác thực vân tay thành công! Đã cấp quyền truy cập hệ thống.'
-            : '❌ Xác thực vân tay bị hủy hoặc thất bại.';
-      });
-
-      if (didAuthenticate && mounted) {
-        showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.fingerprint, color: Colors.green),
-                SizedBox(width: 8),
-                Text('Xác thực Vân tay'),
-              ],
-            ),
-            content: const Text(
-              'Cảm biến sinh trắc học đã nhận diện khớp vân tay của bạn thành công.',
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MainScreen()),
-                  );
-                },
-                child: const Text('Vào ứng dụng'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _biometricStatus =
-            'Lỗi cảm biến: $e\n(Trên máy ảo Android, hãy dùng lệnh mô phỏng fingerprint).';
-      });
+  void _onTabChanged() {
+    if (_tabController.index != 0 && _scanArmed) {
+      setState(() => _scanArmed = false);
+      _syncCamera();
     }
   }
 
-  // ============================================================================
-  // 2. NHẬN DIỆN MÃ QR & CHẤM CÔNG THỰC TẾ
-  // ============================================================================
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground && _scanArmed) setState(() => _scanArmed = false);
+    _syncCamera();
+  }
+
+  void _syncCamera() {
+    _cameraOperation = _cameraOperation
+        .then((_) async {
+          if (_canScan) {
+            await _scannerController.start();
+          } else {
+            await _scannerController.stop();
+          }
+        })
+        .catchError((Object _) {
+          if (!_canScan) return;
+          setState(() => _scanArmed = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Không mở được camera. Vui lòng kiểm tra quyền camera hoặc chọn ảnh QR.',
+              ),
+            ),
+          );
+        });
+  }
+
+  void _selectAction(_QrAction action) {
+    if (_isHandlingScan) return;
+    setState(() {
+      _selectedAction = action;
+      _scanArmed = true;
+    });
+    _syncCamera();
+  }
 
   void _onDetectBarcode(BarcodeCapture capture) {
-    if (_isHandlingScan) return;
-    final now = DateTime.now();
-    // Chống quét trùng lặp trong khoảng 2.5 giây
-    if (now.difference(_lastScanTimestamp).inMilliseconds < 2500) return;
-
-    final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isNotEmpty) {
-      final code = barcodes.first.rawValue;
-      if (code != null && code.trim().isNotEmpty) {
-        _lastScanTimestamp = now;
-        _handleDetectedCode(code.trim());
+    if (!_canScan) return;
+    for (final barcode in capture.barcodes) {
+      final code = barcode.rawValue?.trim();
+      if (code != null && code.isNotEmpty) {
+        unawaited(_handleDetectedCode(code));
+        return;
       }
     }
   }
 
   Future<void> _scanFromGallery() async {
+    final action = _selectedAction;
+    if (action == null || _isHandlingScan) return;
+    setState(() {
+      _isHandlingScan = true;
+      _scanArmed = false;
+    });
+    _syncCamera();
     try {
       final picked = await _picker.pickImage(source: ImageSource.gallery);
-      if (picked == null) return;
-
-      final barcodeCapture = await _scannerController.analyzeImage(picked.path);
-      if (barcodeCapture != null && barcodeCapture.barcodes.isNotEmpty) {
-        final code = barcodeCapture.barcodes.first.rawValue ?? '';
-        if (code.isNotEmpty) {
-          _handleDetectedCode(code.trim());
+      if (picked == null || !mounted) return;
+      final capture = await _scannerController.analyzeImage(picked.path);
+      if (!mounted) return;
+      for (final barcode in capture?.barcodes ?? <Barcode>[]) {
+        final code = barcode.rawValue?.trim();
+        if (code != null && code.isNotEmpty) {
+          await _submitQrAttendance(code, action);
           return;
         }
       }
-
-      setState(() => _scannedResult = 'Không tìm thấy mã QR nào trong ảnh đã chọn.');
+      setState(
+        () => _scannedResult = 'Không tìm thấy mã QR trong ảnh đã chọn.',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tìm thấy mã QR trong ảnh được chọn'),
+        ),
+      );
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Không tìm thấy mã QR trong ảnh được chọn'),
-            backgroundColor: Colors.red,
+            content: Text('Không đọc được ảnh. Vui lòng chọn lại ảnh mã QR.'),
           ),
         );
       }
-    } catch (e) {
-      setState(() => _scannedResult = 'Lỗi quét ảnh: $e');
+    } finally {
+      if (mounted) setState(() => _isHandlingScan = false);
     }
   }
 
-  void _handleDetectedCode(String code) {
-    if (_isHandlingScan) return;
+  Future<void> _handleDetectedCode(String code) async {
+    if (!_canScan || _selectedAction == null) return;
+    final action = _selectedAction!;
     setState(() {
       _isHandlingScan = true;
-      _scannedResult = code;
+      _scanArmed = false;
     });
-
-    // Cảnh báo nếu gặp mã QR mật khẩu dạng rõ (đã bãi bỏ vì lý do an toàn)
-    if (code.startsWith('LOGIN:')) {
-      _showSecurityWarningDialog();
-      return;
+    _syncCamera();
+    try {
+      await _submitQrAttendance(code, action);
+    } finally {
+      if (mounted) setState(() => _isHandlingScan = false);
     }
-
-    // Trường hợp 1: Nhận diện mã QR SẢN PHẨM (Format: PRODUCT:1 hoặc PRD:1)
-    if (code.startsWith('PRODUCT:') || code.startsWith('PRD:')) {
-      final idStr = code.split(':').last;
-      final id = int.tryParse(idStr);
-      if (id != null) {
-        _showProductQrDialog(id);
-        return;
-      }
-    }
-
-    // Trường hợp 2: Gửi mã qrToken đến AttendanceService.checkIn(method: 'QR', qrToken: code)
-    _submitQrCheckIn(code);
   }
 
-  void _showSecurityWarningDialog() {
-    showDialog<void>(
+  Future<void> _submitQrAttendance(String code, _QrAction action) async {
+    setState(() => _scannedResult = code);
+    final checkIn = action == _QrAction.checkIn;
+    final label = checkIn ? 'Check-in' : 'Check-out';
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final loading = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.security, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Cảnh báo bảo mật'),
-          ],
-        ),
-        content: const Text(
-          'Mã QR chứa mật khẩu văn bản rõ (LOGIN:...) đã bị vô hiệu hóa hoàn toàn để đảm bảo an toàn thông tin theo tiêu chuẩn OWASP.\n\n'
-          'Vui lòng sử dụng tính năng Đăng nhập bằng mã OTP, Sinh trắc học vân tay hoặc tài khoản được cấp.',
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => _isHandlingScan = false);
-            },
-            child: const Text('Đã hiểu'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Chấm công bằng mã QR: Gửi qrToken trực tiếp đến backend
-  Future<void> _submitQrCheckIn(String qrCode) async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Đang xác thực mã QR với máy chủ...'),
-              ],
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Đang xác thực mã QR...'),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
-
+    unawaited(navigator.push(loading));
+    AttendanceResult result;
     try {
-      final AttendanceResult result = await AttendanceService.instance.checkIn(
-        method: 'QR',
-        qrToken: qrCode,
-        locationName: 'Điểm danh mã QR',
-        notes: 'Chấm công quét QR: $qrCode',
-      );
-
-      if (!mounted) return;
-      Navigator.pop(context); // Đóng loading dialog
-
-      // Chỉ thông báo thành công khi server trả về 200 OK
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: Row(
-            children: [
-              Icon(
-                result.success ? Icons.check_circle : Icons.error,
-                color: result.success ? Colors.green : Colors.red,
-              ),
-              const SizedBox(width: 8),
-              Text(result.success ? 'Chấm công thành công' : 'Chấm công thất bại'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                result.message,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              const SizedBox(height: 10),
-              Text('Mã QR: $qrCode', style: const TextStyle(fontSize: 12, color: Colors.black87)),
-              Text('Phương thức: Quét mã QR', style: const TextStyle(fontSize: 12, color: Colors.black54)),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: result.success ? Colors.green[50] : Colors.red[50],
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: result.success ? Colors.green[300]! : Colors.red[300]!),
-                ),
-                child: Text(
-                  result.success
-                      ? '✅ Máy chủ đã phản hồi 200 OK. Bản ghi chấm công đã được lưu vào SQL Server.'
-                      : '⚠️ Mã lỗi: ${result.statusCode}. Phản hồi thực tế từ backend: ${result.message}',
-                  style: TextStyle(
-                    color: result.success ? Colors.green[900] : Colors.red[900],
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
+      result = checkIn
+          ? await _attendanceService.checkIn(
+              method: 'QR',
+              qrToken: code,
+              locationName: 'Điểm danh mã QR',
+              notes: 'Chấm công quét QR',
+            )
+          : await _attendanceService.checkOut(
+              method: 'QR',
+              qrToken: code,
+              locationName: 'Điểm danh mã QR',
+              notes: 'Chấm công quét QR',
+            );
+    } catch (_) {
+      result = AttendanceResult(success: false, message: '');
+    } finally {
+      if (loading.isActive) navigator.removeRoute(loading);
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: Text('$label ${result.success ? 'thành công' : 'thất bại'}'),
+          content: Text(
+            result.success
+                ? 'Đã ghi nhận ${checkIn ? 'vào ca' : 'ra ca'} bằng mã QR.'
+                : result.isConflict
+                ? 'Ca làm đã được ghi nhận hoặc trạng thái ca không phù hợp. Vui lòng kiểm tra lịch sử chấm công.'
+                : 'Không thể chấm công. Vui lòng kiểm tra mã QR và kết nối rồi thử lại.',
           ),
           actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                setState(() => _isHandlingScan = false);
-              },
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
               child: const Text('Đóng'),
             ),
           ],
         ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      setState(() => _isHandlingScan = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi kết nối máy chủ: $e'), backgroundColor: Colors.red),
-      );
+      ),
+    );
+    final recordId = int.tryParse(result.data?.id?.toString() ?? '');
+    if (mounted && !checkIn && result.success && recordId != null) {
+      await showPostShiftFeedbackDialog(context: context, recordId: recordId);
     }
   }
 
-  // Dialog Tra cứu Sản phẩm từ QR
-  Future<void> _showProductQrDialog(int productId) async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-
-    productPost? product;
-    try {
-      http.Response response = await _apiClient.get('ProductApi/$productId');
-      if (response.statusCode == 404) {
-        response = await _apiClient.get('products/$productId');
-      }
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));
-        product = productPost.fromJson(data);
-      }
-    } catch (_) {}
-
-    if (!mounted) return;
-    Navigator.pop(context); // Tắt loading
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.inventory_2_rounded, color: Colors.teal),
-            const SizedBox(width: 8),
-            Text('Sản phẩm #$productId'),
-          ],
-        ),
-        content: product != null
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (product.image != null && product.image!.isNotEmpty)
-                    Center(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          product.image!,
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.image, size: 60),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 10),
-                  Text(
-                    product.name ?? 'Không có tên',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Giá: ${product.price?.toStringAsFixed(0) ?? '0'} VND',
-                    style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    product.description ?? 'Không có mô tả',
-                    style: const TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                ],
-              )
-            : Text('Đã nhận diện mã sản phẩm #$productId (Chưa lấy được chi tiết từ máy chủ).'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => _isHandlingScan = false);
-            },
-            child: const Text('Đóng'),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => _isHandlingScan = false);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const MainScreen()),
-              );
-            },
-            icon: const Icon(Icons.storefront),
-            label: const Text('Xem trong Chợ'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Lấy hoặc sinh mã QR chuẩn HUTECH
   Future<void> _fetchActiveQrCode() async {
     setState(() => _isLoadingActiveQr = true);
     try {
-      final code = await AttendanceService.instance.getActiveQrCode();
+      final code = await _attendanceService.getActiveQrCode();
       if (!mounted) return;
       setState(() {
         _qrDataController.text = code;
@@ -433,23 +299,26 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
           backgroundColor: Colors.green[700],
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _isLoadingActiveQr = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi tạo mã: $e'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Không lấy được mã QR. Vui lòng thử lại.'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
 
   // ============================================================================
-  // GIAO DIỆN CHÍNH (3 TABS)
+  // GIAO DIỆN CHÍNH (2 TABS)
   // ============================================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nhận diện QR & Sinh trắc học'),
+        title: const Text('QR chấm công'),
         backgroundColor: Colors.deepPurple[700],
         foregroundColor: Colors.white,
         bottom: TabBar(
@@ -460,7 +329,6 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
           tabs: const [
             Tab(icon: Icon(Icons.qr_code_scanner), text: 'Quét mã QR'),
             Tab(icon: Icon(Icons.qr_code), text: 'Tạo mã QR'),
-            Tab(icon: Icon(Icons.fingerprint), text: 'Vân tay'),
           ],
         ),
       ),
@@ -472,15 +340,64 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
           // -------------------------------------------------------------
           Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
+                  children: [
+                    SegmentedButton<_QrAction>(
+                      emptySelectionAllowed: true,
+                      segments: const [
+                        ButtonSegment(
+                          value: _QrAction.checkIn,
+                          icon: Icon(Icons.login),
+                          label: Text('Check-in'),
+                        ),
+                        ButtonSegment(
+                          value: _QrAction.checkOut,
+                          icon: Icon(Icons.logout),
+                          label: Text('Check-out'),
+                        ),
+                      ],
+                      selected: {?_selectedAction},
+                      onSelectionChanged: _isHandlingScan
+                          ? null
+                          : (selection) {
+                              // Tapping the selected segment explicitly arms another scan.
+                              _selectAction(
+                                selection.isEmpty
+                                    ? _selectedAction!
+                                    : selection.first,
+                              );
+                            },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _isHandlingScan
+                          ? 'Đang xử lý chấm công...'
+                          : _scanArmed
+                          ? 'Đang quét ${_selectedAction == _QrAction.checkIn ? 'Check-in' : 'Check-out'}'
+                          : 'Chọn Check-in hoặc Check-out để bắt đầu quét.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
               Expanded(
                 flex: 4,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    MobileScanner(
-                      controller: _scannerController,
-                      onDetect: _onDetectBarcode,
-                    ),
+                    widget.scannerBuilder?.call(
+                          context,
+                          _scannerController,
+                          _onDetectBarcode,
+                        ) ??
+                        MobileScanner(
+                          controller: _scannerController,
+                          useAppLifecycleState: false,
+                          onDetect: _onDetectBarcode,
+                        ),
                     // Khung ngắm quét
                     Container(
                       width: 240,
@@ -499,18 +416,28 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                           CircleAvatar(
                             backgroundColor: Colors.black54,
                             child: IconButton(
-                              icon: const Icon(Icons.flash_on, color: Colors.white),
+                              icon: const Icon(
+                                Icons.flash_on,
+                                color: Colors.white,
+                              ),
                               tooltip: 'Bật/Tắt Flash',
-                              onPressed: () => _scannerController.toggleTorch(),
+                              onPressed: _canScan
+                                  ? () => _scannerController.toggleTorch()
+                                  : null,
                             ),
                           ),
                           const SizedBox(width: 8),
                           CircleAvatar(
                             backgroundColor: Colors.black54,
                             child: IconButton(
-                              icon: const Icon(Icons.flip_camera_ios, color: Colors.white),
+                              icon: const Icon(
+                                Icons.flip_camera_ios,
+                                color: Colors.white,
+                              ),
                               tooltip: 'Đổi Camera',
-                              onPressed: () => _scannerController.switchCamera(),
+                              onPressed: _canScan
+                                  ? () => _scannerController.switchCamera()
+                                  : null,
                             ),
                           ),
                         ],
@@ -520,7 +447,10 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                     Positioned(
                       bottom: 16,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black54,
                           borderRadius: BorderRadius.circular(20),
@@ -545,16 +475,23 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                         'Kết quả gần nhất: $_scannedResult',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         height: 44,
                         child: OutlinedButton.icon(
-                          onPressed: _scanFromGallery,
+                          onPressed: _selectedAction == null || _isHandlingScan
+                              ? null
+                              : _scanFromGallery,
                           icon: const Icon(Icons.photo_library),
-                          label: const Text('Chọn ảnh mã QR từ bộ nhớ / thư viện'),
+                          label: const Text(
+                            'Chọn ảnh mã QR từ bộ nhớ / thư viện',
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -568,13 +505,20 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.info_outline, color: Colors.deepPurple[800], size: 20),
+                            Icon(
+                              Icons.info_outline,
+                              color: Colors.deepPurple[800],
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Hệ thống chỉ chấp nhận mã QR thực tế hợp lệ từ ban quản trị HUTECH (prefix HUTECH_ATTENDANCE_QR_...). '
-                                'Khi quét thành công, dữ liệu được gửi trực tiếp đến máy chủ backend để xác thực vị trí và ca làm.',
-                                style: TextStyle(color: Colors.deepPurple[900], fontSize: 12),
+                                'Chọn thao tác vào ca hoặc ra ca, sau đó quét mã QR do quản trị viên cung cấp. '
+                                'Sau mỗi lần chấm công, hãy chọn lại thao tác để quét tiếp.',
+                                style: TextStyle(
+                                  color: Colors.deepPurple[900],
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ],
@@ -637,9 +581,13 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                       icon: const Icon(Icons.copy),
                       tooltip: 'Sao chép mã',
                       onPressed: () {
-                        Clipboard.setData(ClipboardData(text: _qrDataController.text));
+                        Clipboard.setData(
+                          ClipboardData(text: _qrDataController.text),
+                        );
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Đã sao chép mã QR vào bộ nhớ tạm')),
+                          const SnackBar(
+                            content: Text('Đã sao chép mã QR vào bộ nhớ tạm'),
+                          ),
                         );
                       },
                     ),
@@ -655,16 +603,23 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.deepPurple[700],
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     icon: _isLoadingActiveQr
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
                           )
                         : const Icon(Icons.sync_rounded),
-                    label: const Text('Lấy / Sinh mã QR Chuẩn (HUTECH_ATTENDANCE_QR_...)'),
+                    label: const Text(
+                      'Lấy / Sinh mã QR Chuẩn (HUTECH_ATTENDANCE_QR_...)',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -672,45 +627,6 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                   'Mã QR hợp lệ có tiền tố HUTECH_ATTENDANCE_QR_ phục vụ cho các điểm danh tại cơ sở. '
                   'Admin có thể in mã này hoặc hiển thị trên màn hình tại quầy lễ tân để nhân viên quét.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-
-          // -------------------------------------------------------------
-          // TAB 3: XÁC THỰC SINH TRẮC HỌC VÂN TAY (local_auth)
-          // -------------------------------------------------------------
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.fingerprint_rounded, size: 100, color: Colors.deepPurple[700]),
-                const SizedBox(height: 24),
-                const Text(
-                  'Xác thực Sinh Trắc Học',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _biometricStatus,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey[800], fontSize: 14, height: 1.4),
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: _authenticateWithBiometrics,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple[700],
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.touch_app_rounded),
-                    label: const Text('Quét vân tay ngay', style: TextStyle(fontSize: 16)),
-                  ),
                 ),
               ],
             ),

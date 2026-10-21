@@ -19,13 +19,15 @@ class AttendanceResult {
   bool get isConflict => statusCode == 409;
 
   @override
-  String toString() => 'AttendanceResult(success: $success, message: $message, statusCode: $statusCode)';
+  String toString() =>
+      'AttendanceResult(success: $success, message: $message, statusCode: $statusCode)';
 }
 
 class AttendanceService {
   final ApiClient _apiClient;
 
-  AttendanceService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
+  AttendanceService({ApiClient? apiClient})
+    : _apiClient = apiClient ?? ApiClient();
 
   // Singleton instance
   static final AttendanceService _instance = AttendanceService();
@@ -43,6 +45,7 @@ class AttendanceService {
     double? latitude,
     double? longitude,
     String? qrToken,
+    String? faceProof,
     String? locationName,
     String? notes,
   }) async {
@@ -53,6 +56,7 @@ class AttendanceService {
     if (latitude != null) body['latitude'] = latitude;
     if (longitude != null) body['longitude'] = longitude;
     if (qrToken != null) body['qrToken'] = qrToken;
+    if (faceProof != null) body['faceProof'] = faceProof;
     if (locationName != null) body['locationName'] = locationName;
     if (notes != null) body['notes'] = notes;
 
@@ -74,7 +78,11 @@ class AttendanceService {
           if (decoded['message'] != null) {
             message = decoded['message'].toString();
           }
-          final dynamic dataPart = decoded['data'] ?? decoded['record'] ?? decoded['attendance'] ?? decoded;
+          final dynamic dataPart =
+              decoded['data'] ??
+              decoded['record'] ??
+              decoded['attendance'] ??
+              decoded;
           if (dataPart is Map<String, dynamic>) {
             record = AttendanceRecord.fromJson(dataPart);
           }
@@ -93,7 +101,11 @@ class AttendanceService {
         try {
           final decoded = jsonDecode(utf8.decode(response.bodyBytes));
           if (decoded is Map<String, dynamic>) {
-            errorMsg = decoded['message'] ?? decoded['error'] ?? decoded['title'] ?? errorMsg;
+            errorMsg =
+                decoded['message'] ??
+                decoded['error'] ??
+                decoded['title'] ??
+                errorMsg;
           }
         } catch (_) {}
 
@@ -118,6 +130,7 @@ class AttendanceService {
     double? latitude,
     double? longitude,
     String? qrToken,
+    String? faceProof,
     String? locationName,
     String? notes,
   }) async {
@@ -128,11 +141,15 @@ class AttendanceService {
     if (latitude != null) body['latitude'] = latitude;
     if (longitude != null) body['longitude'] = longitude;
     if (qrToken != null) body['qrToken'] = qrToken;
+    if (faceProof != null) body['faceProof'] = faceProof;
     if (locationName != null) body['locationName'] = locationName;
     if (notes != null) body['notes'] = notes;
 
     try {
-      final response = await _apiClient.post('Attendance/check-out', body: body);
+      final response = await _apiClient.post(
+        'Attendance/check-out',
+        body: body,
+      );
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         dynamic decoded;
@@ -149,7 +166,11 @@ class AttendanceService {
           if (decoded['message'] != null) {
             message = decoded['message'].toString();
           }
-          final dynamic dataPart = decoded['data'] ?? decoded['record'] ?? decoded['attendance'] ?? decoded;
+          final dynamic dataPart =
+              decoded['data'] ??
+              decoded['record'] ??
+              decoded['attendance'] ??
+              decoded;
           if (dataPart is Map<String, dynamic>) {
             record = AttendanceRecord.fromJson(dataPart);
           }
@@ -166,7 +187,11 @@ class AttendanceService {
         try {
           final decoded = jsonDecode(utf8.decode(response.bodyBytes));
           if (decoded is Map<String, dynamic>) {
-            errorMsg = decoded['message'] ?? decoded['error'] ?? decoded['title'] ?? errorMsg;
+            errorMsg =
+                decoded['message'] ??
+                decoded['error'] ??
+                decoded['title'] ??
+                errorMsg;
           }
         } catch (_) {}
 
@@ -191,15 +216,16 @@ class AttendanceService {
     required String mood,
     String? notes,
   }) async {
-    final Map<String, dynamic> body = {
-      'mood': mood,
-    };
+    final Map<String, dynamic> body = {'mood': mood};
     if (notes != null && notes.isNotEmpty) {
       body['notes'] = notes;
     }
 
     try {
-      final response = await _apiClient.post('Attendance/$recordId/feedback', body: body);
+      final response = await _apiClient.post(
+        'Attendance/$recordId/feedback',
+        body: body,
+      );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         dynamic decoded;
@@ -216,7 +242,8 @@ class AttendanceService {
           if (decoded['message'] != null) {
             message = decoded['message'].toString();
           }
-          final dynamic dataPart = decoded['data'] ?? decoded['record'] ?? decoded;
+          final dynamic dataPart =
+              decoded['data'] ?? decoded['record'] ?? decoded;
           if (dataPart is Map<String, dynamic>) {
             record = AttendanceRecord.fromJson(dataPart);
           }
@@ -229,11 +256,16 @@ class AttendanceService {
           statusCode: response.statusCode,
         );
       } else {
-        String errorMsg = 'Gửi cảm nhận thất bại (Mã lỗi ${response.statusCode})';
+        String errorMsg =
+            'Gửi cảm nhận thất bại (Mã lỗi ${response.statusCode})';
         try {
           final decoded = jsonDecode(utf8.decode(response.bodyBytes));
           if (decoded is Map<String, dynamic>) {
-            errorMsg = decoded['message'] ?? decoded['error'] ?? decoded['title'] ?? errorMsg;
+            errorMsg =
+                decoded['message'] ??
+                decoded['error'] ??
+                decoded['title'] ??
+                errorMsg;
           }
         } catch (_) {}
 
@@ -275,7 +307,9 @@ class AttendanceService {
             .map((item) => AttendanceRecord.fromJson(item))
             .toList();
       } else {
-        throw Exception('Không thể tải lịch sử chấm công (Mã lỗi: ${response.statusCode})');
+        throw Exception(
+          'Không thể tải lịch sử chấm công (Mã lỗi: ${response.statusCode})',
+        );
       }
     } catch (e) {
       rethrow;
@@ -305,7 +339,9 @@ class AttendanceService {
             .map((item) => AttendanceRecord.fromJson(item))
             .toList();
       } else {
-        throw Exception('Không thể tải danh sách chấm công toàn bộ (Mã lỗi: ${response.statusCode})');
+        throw Exception(
+          'Không thể tải danh sách chấm công toàn bộ (Mã lỗi: ${response.statusCode})',
+        );
       }
     } catch (e) {
       rethrow;
@@ -319,7 +355,8 @@ class AttendanceService {
       if (response.statusCode == 200) {
         final decoded = jsonDecode(utf8.decode(response.bodyBytes));
         if (decoded is Map<String, dynamic>) {
-          final token = decoded['qrToken'] ?? decoded['token'] ?? decoded['data'];
+          final token =
+              decoded['qrToken'] ?? decoded['token'] ?? decoded['data'];
           if (token != null && token.toString().trim().isNotEmpty) {
             return token.toString().trim();
           }
@@ -332,7 +369,8 @@ class AttendanceService {
     }
     // Chuẩn prefix HUTECH_ATTENDANCE_QR_ kèm thời gian hiện tại
     final now = DateTime.now();
-    final timeStamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+    final timeStamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
     return 'HUTECH_ATTENDANCE_QR_CAMPUS_E_$timeStamp';
   }
 
@@ -359,7 +397,9 @@ class AttendanceService {
             .map((item) => Employee.fromJson(item))
             .toList();
       } else {
-        throw Exception('Không thể tải danh sách nhân viên (Mã lỗi: ${response.statusCode})');
+        throw Exception(
+          'Không thể tải danh sách nhân viên (Mã lỗi: ${response.statusCode})',
+        );
       }
     } catch (e) {
       rethrow;
@@ -367,7 +407,10 @@ class AttendanceService {
   }
 
   /// Admin cập nhật vai trò người dùng: POST /api/Admin/employees/{id}/role
-  Future<AttendanceResult> updateEmployeeRole(String employeeId, String newRole) async {
+  Future<AttendanceResult> updateEmployeeRole(
+    String employeeId,
+    String newRole,
+  ) async {
     try {
       final response = await _apiClient.post(
         'Admin/employees/$employeeId/role',
@@ -419,12 +462,13 @@ class AttendanceService {
       );
     }
 
-    final Map<String, dynamic> body = {
-      'id': id,
-      'reason': reason.trim(),
-    };
-    if (checkInTime != null) body['checkInTime'] = checkInTime.toIso8601String();
-    if (checkOutTime != null) body['checkOutTime'] = checkOutTime.toIso8601String();
+    final Map<String, dynamic> body = {'id': id, 'reason': reason.trim()};
+    if (checkInTime != null) {
+      body['checkInTime'] = checkInTime.toIso8601String();
+    }
+    if (checkOutTime != null) {
+      body['checkOutTime'] = checkOutTime.toIso8601String();
+    }
     if (status != null) body['status'] = status;
 
     try {

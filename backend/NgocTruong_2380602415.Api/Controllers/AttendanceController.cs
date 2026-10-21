@@ -178,19 +178,7 @@ public class AttendanceController : ControllerBase
                     });
                 }
 
-                var token = request.QrToken.Trim();
-                var isValidQr = false;
-
-                if (ActiveQrCodes.TryGetValue(token, out var activeItem) && activeItem.ExpiresAt >= DateTime.UtcNow)
-                {
-                    isValidQr = true;
-                }
-                else if (token.StartsWith("HUTECH_ATTENDANCE_QR_", StringComparison.OrdinalIgnoreCase) && token.Length > "HUTECH_ATTENDANCE_QR_".Length)
-                {
-                    isValidQr = true;
-                }
-
-                if (!isValidQr)
+                if (!IsValidQrToken(request.QrToken))
                 {
                     return BadRequest(new
                     {
@@ -278,6 +266,37 @@ public class AttendanceController : ControllerBase
                     message = $"Phương thức chấm công '{request.Method}' không hợp lệ. Chỉ chấp nhận GPS, QR, Face, Biometric, Dashboard."
                 });
             }
+        }
+
+        var method = request?.Method?.Trim();
+        if (string.Equals(method, "QR", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(request?.QrToken))
+            {
+                return BadRequest(new
+                {
+                    status = false,
+                    message = "Phương thức QR yêu cầu cung cấp qrToken."
+                });
+            }
+
+            if (!IsValidQrToken(request.QrToken))
+            {
+                return BadRequest(new
+                {
+                    status = false,
+                    message = "Mã QR không hợp lệ hoặc đã hết hạn."
+                });
+            }
+        }
+        else if (string.Equals(method, "Face", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(request?.FaceProof))
+        {
+            return BadRequest(new
+            {
+                status = false,
+                message = "Phương thức Face yêu cầu dữ liệu FaceProof hợp lệ sau khi nhận diện."
+            });
         }
 
         record.CheckOutTime = DateTime.UtcNow;
@@ -636,6 +655,14 @@ public class AttendanceController : ControllerBase
         }
 
         return null;
+    }
+
+    private static bool IsValidQrToken(string qrToken)
+    {
+        var token = qrToken.Trim();
+        return (ActiveQrCodes.TryGetValue(token, out var activeItem) && activeItem.ExpiresAt >= DateTime.UtcNow)
+            || (token.StartsWith("HUTECH_ATTENDANCE_QR_", StringComparison.OrdinalIgnoreCase)
+                && token.Length > "HUTECH_ATTENDANCE_QR_".Length);
     }
 
     private static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)

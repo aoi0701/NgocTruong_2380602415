@@ -7,8 +7,6 @@ import 'admin_screen.dart';
 import 'staff_screen.dart';
 import 'main_screen.dart';
 import 'registration_screen.dart';
-import 'biometric_qr_screen.dart';
-import 'face_auth_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -64,7 +62,8 @@ class _LoginScreenState extends State<LoginScreen> {
           String? role = prefs.getString('user_role');
           try {
             final decoded = JwtDecoder.decode(token);
-            final dynamic rawRole = decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
+            final dynamic rawRole =
+                decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
                 decoded['role'] ??
                 decoded['roles'];
             if (rawRole is List && rawRole.isNotEmpty) {
@@ -136,7 +135,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập Tên đăng nhập hoặc Email trước để nhận mã OTP'),
+          content: Text(
+            'Vui lòng nhập Tên đăng nhập hoặc Email trước để nhận mã OTP',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -160,7 +161,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              result['message'] ?? 'Mã OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.',
+              result['message'] ??
+                  'Mã OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.',
             ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 5),
@@ -170,7 +172,9 @@ class _LoginScreenState extends State<LoginScreen> {
         // Server trả về lỗi (như 503 SMTP chưa cấu hình, 429 cooldown, hoặc 404):
         // Hiển thị thông báo lỗi thật màu đỏ chi tiết.
         // Tuyệt đối KHÔNG bật trạng thái "Đã gửi OTP", KHÔNG đếm cooldown 60s.
-        final errorMsg = result['message'] ?? 'Không thể gửi mã OTP. Vui lòng kiểm tra lại tài khoản.';
+        final errorMsg =
+            result['message'] ??
+            'Không thể gửi mã OTP. Vui lòng kiểm tra lại tài khoản.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
@@ -212,7 +216,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (otp.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập mã OTP được gửi về email để xác thực đăng nhập'),
+          content: Text(
+            'Vui lòng nhập mã OTP để xác thực đăng nhập',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -250,7 +256,9 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         // Xóa sạch token cũ khi 401 Unauthorized hoặc đăng nhập thất bại
         await Auth.logout();
-        final errorMessage = result['message'] ?? 'Tên đăng nhập, mật khẩu hoặc mã OTP không chính xác';
+        final errorMessage =
+            result['message'] ??
+            'Tên đăng nhập, mật khẩu hoặc mã OTP không chính xác';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -271,268 +279,195 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  InputDecoration _fieldDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(icon, color: const Color(0xFF087F8C)),
+      filled: true,
+      fillColor: const Color(0xFFF1F6FA),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF087F8C), width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.all(18),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF3F8FC),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              children: [
-                const SizedBox(height: 50),
-                // Logo Facebook theo mẫu tài liệu Tuần 7
-                Text(
-                  'facebook',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 44,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[700],
-                    letterSpacing: -1.5,
-                  ),
-                ),
-                const SizedBox(height: 35),
-
-                // 1. Trường nhập số điện thoại hoặc email
-                TextField(
-                  controller: _usernameController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    hintText: 'Số điện thoại hoặc email',
-                    prefixIcon: const Icon(Icons.person_outline),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 2. Trường nhập mật khẩu
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    hintText: 'Mật khẩu',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.grey,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 3. Trường nhập mã OTP (Xác thực 2 lớp) + Nút gửi OTP kèm Cooldown 60s
-                Row(
+        child: Center(
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _otpController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          hintText: 'Mã xác thực OTP (từ email)',
-                          prefixIcon: const Icon(Icons.security_rounded),
-                          filled: true,
-                          fillColor: Colors.grey[100],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
+                    const Center(
+                      child: CircleAvatar(
+                        radius: 34,
+                        backgroundColor: Color(0xFFE0F2F1),
+                        child: Icon(
+                          Icons.access_time_rounded,
+                          size: 36,
+                          color: Color(0xFF087F8C),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 52,
-                      child: OutlinedButton(
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Chấm công',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF155A80),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Đăng nhập để quản lý thời gian làm việc',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFF5D7180)),
+                    ),
+                    const SizedBox(height: 32),
+                    TextField(
+                      controller: _usernameController,
+                      autofillHints: const [AutofillHints.username],
+                      textInputAction: TextInputAction.next,
+                      decoration: _fieldDecoration(
+                        'Tên đăng nhập hoặc email',
+                        Icons.person_outline,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      autofillHints: const [AutofillHints.password],
+                      textInputAction: TextInputAction.next,
+                      decoration:
+                          _fieldDecoration(
+                            'Mật khẩu',
+                            Icons.lock_outline,
+                          ).copyWith(
+                            suffixIcon: IconButton(
+                              tooltip: _obscurePassword
+                                  ? 'Hiện mật khẩu'
+                                  : 'Ẩn mật khẩu',
+                              onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                            ),
+                          ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _otpController,
+                      keyboardType: TextInputType.number,
+                      autofillHints: const [AutofillHints.oneTimeCode],
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        if (!_isLoading) _handleLogin();
+                      },
+                      decoration: _fieldDecoration(
+                        'Mã xác thực OTP',
+                        Icons.mark_email_read_outlined,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
                         onPressed: (_isSendingOtp || _otpCooldown > 0)
                             ? null
                             : _handleRequestOtp,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.blue[700],
-                          disabledForegroundColor: Colors.grey[600],
-                          side: BorderSide(
-                            color: _otpCooldown > 0 ? Colors.grey[350]! : Colors.blue[700]!,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF087F8C),
                         ),
                         child: _isSendingOtp
                             ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : Text(
-                                _otpCooldown > 0 ? '${_otpCooldown}s' : 'Gửi OTP',
+                                _otpCooldown > 0
+                                    ? 'Gửi lại sau ${_otpCooldown}s'
+                                    : 'Gửi OTP',
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 54,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _handleLogin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF155A80),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Đăng nhập',
                                 style: TextStyle(
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: _otpCooldown > 0 ? Colors.grey[600] : Colors.blue[700],
                                 ),
                               ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Nút Đăng nhập
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleLogin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[700],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Text(
-                            'Đăng nhập',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                    const SizedBox(height: 20),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text('Chưa có tài khoản?'),
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RegistrationScreen(),
                             ),
                           ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Nút Đăng nhập bằng mã QR (Thuyết trình Câu 5)
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.deepPurple[700],
-                      side: BorderSide(color: Colors.deepPurple[700]!, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.qr_code_scanner_rounded),
-                    label: const Text(
-                      'Đăng nhập bằng mã QR',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Phím tắt xác thực Sinh trắc học: Vân tay & Khuôn mặt
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.indigo[700],
-                          side: BorderSide(color: Colors.indigo[200]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: const Icon(Icons.fingerprint, size: 20),
-                        label: const Text('Vân tay'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const FaceAuthScreen()),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.teal[700],
-                          side: BorderSide(color: Colors.teal[200]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: const Icon(Icons.face_rounded, size: 20),
-                        label: const Text('Khuôn mặt'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Điều hướng sang màn hình đăng ký
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('Chưa có tài khoản? '),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const RegistrationScreen(),
+                          child: const Text(
+                            'Đăng ký ngay',
+                            style: TextStyle(color: Color(0xFF087F8C)),
                           ),
-                        );
-                      },
-                      child: Text(
-                        'Đăng ký ngay',
-                        style: TextStyle(
-                          color: Colors.blue[700],
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

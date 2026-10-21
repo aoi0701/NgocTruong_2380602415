@@ -1,25 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/attendance.dart';
-import '../services/api_client.dart';
 import '../services/attendance_service.dart';
 import '../utils/auth.dart';
 import 'login_screen.dart';
-
-class CategoryItem {
-  final int id;
-  final String name;
-
-  CategoryItem({required this.id, required this.name});
-
-  factory CategoryItem.fromJson(Map<String, dynamic> json) {
-    final dynamic rawId = json['id'] ?? json['categoryId'] ?? json['Id'] ?? 0;
-    final int parsedId = rawId is int ? rawId : int.tryParse(rawId.toString()) ?? 0;
-    final String parsedName =
-        (json['name'] ?? json['categoryName'] ?? json['Name'] ?? json['title'] ?? '').toString();
-    return CategoryItem(id: parsedId, name: parsedName);
-  }
-}
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -28,16 +11,11 @@ class AdminScreen extends StatefulWidget {
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
+class _AdminScreenState extends State<AdminScreen>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  final ApiClient _apiClient = ApiClient();
 
-  // Tab 1: Quản lý danh mục
-  List<CategoryItem> _categories = [];
-  bool _isLoadingCategories = false;
-  String? _categoryErrorMessage;
-
-  // Tab 2: Quản lý chấm công nhân viên
+  // Tab 1: Quản lý chấm công nhân viên
   List<AttendanceRecord> _attendances = [];
   bool _isLoadingAttendances = false;
   String? _attendanceErrorMessage;
@@ -45,20 +23,20 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   String _selectedStatusFilter = 'ALL'; // ALL, IN_PROGRESS, COMPLETED, GPS, QR
   final TextEditingController _searchStaffController = TextEditingController();
 
-  // Tab 3: Quản lý nhân viên công ty
+  // Tab 2: Quản lý nhân viên công ty
   List<Employee> _employees = [];
   bool _isLoadingEmployees = false;
   String? _employeeErrorMessage;
-  final TextEditingController _searchEmployeeController = TextEditingController();
+  final TextEditingController _searchEmployeeController =
+      TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
-    _fetchCategories();
     _fetchAttendances();
     _fetchEmployees();
   }
@@ -70,283 +48,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     _searchEmployeeController.dispose();
     super.dispose();
   }
-
-  // ============================================================================
-  // TAB 1: DANH MỤC SẢN PHẨM (CRUD)
-  // ============================================================================
-
-  // Lấy danh sách danh mục từ API: GET /api/Categories
-  Future<void> _fetchCategories() async {
-    setState(() {
-      _isLoadingCategories = true;
-      _categoryErrorMessage = null;
-    });
-
-    try {
-      final response = await _apiClient.get('Categories');
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        List<dynamic> list = [];
-        if (decoded is List) {
-          list = decoded;
-        } else if (decoded is Map<String, dynamic>) {
-          if (decoded['data'] is List) {
-            list = decoded['data'];
-          } else if (decoded['categories'] is List) {
-            list = decoded['categories'];
-          }
-        }
-
-        final items = list
-            .whereType<Map<String, dynamic>>()
-            .map((item) => CategoryItem.fromJson(item))
-            .toList();
-
-        if (mounted) {
-          setState(() {
-            _categories = items;
-            _isLoadingCategories = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _categoryErrorMessage = 'Lỗi tải danh mục: mã ${response.statusCode}';
-            _isLoadingCategories = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _categoryErrorMessage = 'Lỗi kết nối máy chủ: $e';
-          _isLoadingCategories = false;
-        });
-      }
-    }
-  }
-
-  // Thêm danh mục mới: POST /api/Categories
-  Future<void> _createCategory(String name) async {
-    if (name.trim().isEmpty) return;
-    try {
-      final response = await _apiClient.post(
-        'Categories',
-        body: {
-          'name': name.trim(),
-          'categoryName': name.trim(),
-        },
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Thêm danh mục mới thành công!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        await _fetchCategories();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Thêm thất bại (mã ${response.statusCode})'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  // Sửa tên danh mục: PUT /api/Categories/{id}
-  Future<void> _updateCategory(int id, String newName) async {
-    if (newName.trim().isEmpty) return;
-    try {
-      final response = await _apiClient.put(
-        'Categories/$id',
-        body: {
-          'id': id,
-          'name': newName.trim(),
-          'categoryName': newName.trim(),
-        },
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cập nhật tên danh mục thành công!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        await _fetchCategories();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Cập nhật thất bại (mã ${response.statusCode})'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  // Xóa danh mục: DELETE /api/Categories/{id}
-  Future<void> _deleteCategory(int id, String name) async {
-    try {
-      final response = await _apiClient.delete('Categories/$id');
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã xóa danh mục "$name"! Các sản phẩm đã được tách khỏi danh mục.'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        await _fetchCategories();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Xóa thất bại (mã ${response.statusCode})'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  void _confirmDeleteCategory(CategoryItem category) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Xác nhận xóa'),
-          ],
-        ),
-        content: Text(
-          'Bạn có chắc chắn muốn xóa danh mục "${category.name}"?\n\n'
-          'Lưu ý: Các sản phẩm thuộc danh mục này sẽ KHÔNG bị xóa mà sẽ chuyển thành không thuộc danh mục nào.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _deleteCategory(category.id, category.name);
-            },
-            child: const Text('Xác nhận xóa', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddCategoryDialog() {
-    final controller = TextEditingController();
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Thêm danh mục mới'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Tên danh mục',
-            hintText: 'Nhập tên danh mục (VD: Đồ điện tử, Sách...)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isNotEmpty) {
-                Navigator.pop(ctx);
-                _createCategory(text);
-              }
-            },
-            child: const Text('Thêm'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditCategoryDialog(CategoryItem category) {
-    final controller = TextEditingController(text: category.name);
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Sửa danh mục #${category.id}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Tên danh mục mới',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isNotEmpty) {
-                Navigator.pop(ctx);
-                _updateCategory(category.id, text);
-              }
-            },
-            child: const Text('Lưu thay đổi'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================================
-  // TAB 2: QUẢN LÝ CHẤM CÔNG TOÀN BỘ NHÂN VIÊN (GET /api/Attendance/all)
-  // ============================================================================
 
   Future<void> _fetchAttendances() async {
     setState(() {
@@ -396,10 +97,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       if (_selectedStatusFilter == 'COMPLETED' && !record.isCompleted) {
         return false;
       }
-      if (_selectedStatusFilter == 'GPS' && !(record.method ?? '').toUpperCase().contains('GPS')) {
+      if (_selectedStatusFilter == 'GPS' &&
+          !(record.method ?? '').toUpperCase().contains('GPS')) {
         return false;
       }
-      if (_selectedStatusFilter == 'QR' && !(record.method ?? '').toUpperCase().contains('QR')) {
+      if (_selectedStatusFilter == 'QR' &&
+          !(record.method ?? '').toUpperCase().contains('QR')) {
         return false;
       }
 
@@ -410,7 +113,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         final userName = (record.userName ?? '').toLowerCase();
         final notes = (record.notes ?? '').toLowerCase();
         final loc = (record.locationName ?? '').toLowerCase();
-        if (!userId.contains(query) && !userName.contains(query) && !notes.contains(query) && !loc.contains(query)) {
+        if (!userId.contains(query) &&
+            !userName.contains(query) &&
+            !notes.contains(query) &&
+            !loc.contains(query)) {
           return false;
         }
       }
@@ -480,11 +186,19 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                             if (date == null) return;
                             final time = await showTimePicker(
                               context: context,
-                              initialTime: TimeOfDay.fromDateTime(checkIn ?? DateTime.now()),
+                              initialTime: TimeOfDay.fromDateTime(
+                                checkIn ?? DateTime.now(),
+                              ),
                             );
                             if (time == null) return;
                             setDialogState(() {
-                              checkIn = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                              checkIn = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                                time.hour,
+                                time.minute,
+                              );
                             });
                           },
                           icon: const Icon(Icons.access_time, size: 16),
@@ -512,11 +226,19 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                             if (date == null) return;
                             final time = await showTimePicker(
                               context: context,
-                              initialTime: TimeOfDay.fromDateTime(checkOut ?? DateTime.now()),
+                              initialTime: TimeOfDay.fromDateTime(
+                                checkOut ?? DateTime.now(),
+                              ),
                             );
                             if (time == null) return;
                             setDialogState(() {
-                              checkOut = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                              checkOut = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                                time.hour,
+                                time.minute,
+                              );
                             });
                           },
                           icon: const Icon(Icons.access_time, size: 16),
@@ -533,16 +255,44 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     // Dropdown Trạng thái
                     const Text('Trạng thái bản ghi:'),
                     DropdownButtonFormField<String>(
-                      value: ['VALID', 'ON_TIME', 'LATE', 'MANUAL_EDIT', 'EXCUSED'].contains(status)
+                      value:
+                          [
+                            'VALID',
+                            'ON_TIME',
+                            'LATE',
+                            'MANUAL_EDIT',
+                            'EXCUSED',
+                          ].contains(status)
                           ? status
                           : 'VALID',
-                      decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                      ),
                       items: const [
-                        DropdownMenuItem(value: 'VALID', child: Text('Hợp lệ (VALID)')),
-                        DropdownMenuItem(value: 'ON_TIME', child: Text('Đúng giờ (ON_TIME)')),
-                        DropdownMenuItem(value: 'LATE', child: Text('Đi trễ (LATE)')),
-                        DropdownMenuItem(value: 'MANUAL_EDIT', child: Text('Điều chỉnh thủ công (MANUAL_EDIT)')),
-                        DropdownMenuItem(value: 'EXCUSED', child: Text('Có phép (EXCUSED)')),
+                        DropdownMenuItem(
+                          value: 'VALID',
+                          child: Text('Hợp lệ (VALID)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'ON_TIME',
+                          child: Text('Đúng giờ (ON_TIME)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'LATE',
+                          child: Text('Đi trễ (LATE)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'MANUAL_EDIT',
+                          child: Text('Điều chỉnh thủ công (MANUAL_EDIT)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'EXCUSED',
+                          child: Text('Có phép (EXCUSED)'),
+                        ),
                       ],
                       onChanged: (val) {
                         if (val != null) setDialogState(() => status = val);
@@ -556,7 +306,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: 'Lý do điều chỉnh (BẮT BUỘC) *',
-                        hintText: 'VD: Nhân viên quên bấm nút, sửa theo giấy xác nhận...',
+                        hintText:
+                            'VD: Nhân viên quên bấm nút, sửa theo giấy xác nhận...',
                         border: OutlineInputBorder(),
                       ),
                       validator: (value) {
@@ -576,7 +327,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 child: const Text('Hủy'),
               ),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800], foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: () async {
                   if (formKey.currentState?.validate() != true) return;
                   Navigator.pop(ctx);
@@ -685,7 +439,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 maxLines: 2,
                 decoration: const InputDecoration(
                   labelText: 'Lý do xóa bản ghi (BẮT BUỘC) *',
-                  hintText: 'VD: Bản ghi trùng lặp, ca làm bị hủy theo yêu cầu...',
+                  hintText:
+                      'VD: Bản ghi trùng lặp, ca làm bị hủy theo yêu cầu...',
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
@@ -704,11 +459,17 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             child: const Text('Hủy'),
           ),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () async {
               if (formKey.currentState?.validate() != true) return;
               Navigator.pop(ctx);
-              await _executeDeleteAttendance(record.id, reasonController.text.trim());
+              await _executeDeleteAttendance(
+                record.id,
+                reasonController.text.trim(),
+              );
             },
             icon: const Icon(Icons.delete_forever, size: 16),
             label: const Text('Xác nhận xóa'),
@@ -725,7 +486,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    final result = await AttendanceService.instance.deleteAttendance(id, reason: reason);
+    final result = await AttendanceService.instance.deleteAttendance(
+      id,
+      reason: reason,
+    );
 
     if (!mounted) return;
     Navigator.pop(context); // Tắt loading
@@ -825,8 +589,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
                   value: selectedRole,
-                  decoration: const InputDecoration(border: OutlineInputBorder()),
-                  items: roles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
+                  items: roles
+                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                      .toList(),
                   onChanged: (val) {
                     if (val != null) setDialogState(() => selectedRole = val);
                   },
@@ -845,7 +613,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 child: const Text('Hủy'),
               ),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800], foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: () async {
                   Navigator.pop(ctx);
                   await _executeUpdateRole(employee.id, selectedRole);
@@ -867,7 +638,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    final result = await AttendanceService.instance.updateEmployeeRole(employeeId, newRole);
+    final result = await AttendanceService.instance.updateEmployeeRole(
+      employeeId,
+      newRole,
+    );
 
     if (!mounted) return;
     Navigator.pop(context); // Tắt loading
@@ -906,7 +680,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Đăng xuất'),
-        content: const Text('Bạn có chắc chắn muốn đăng xuất tài khoản Quản trị viên?'),
+        content: const Text(
+          'Bạn có chắc chắn muốn đăng xuất tài khoản Quản trị viên?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -915,7 +691,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Đăng xuất', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Đăng xuất',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -945,8 +724,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             tooltip: 'Làm mới dữ liệu',
             onPressed: () {
               if (_tabController.index == 0) {
-                _fetchCategories();
-              } else if (_tabController.index == 1) {
                 _fetchAttendances();
               } else {
                 _fetchEmployees();
@@ -965,19 +742,20 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.amber,
           tabs: const [
-            Tab(icon: Icon(Icons.category_rounded), text: 'Danh mục Sản phẩm'),
-            Tab(icon: Icon(Icons.assignment_turned_in_rounded), text: 'Chấm công Nhân viên'),
-            Tab(icon: Icon(Icons.people_alt_rounded), text: 'Quản lý Nhân viên'),
+            Tab(
+              icon: Icon(Icons.assignment_turned_in_rounded),
+              text: 'Chấm công Nhân viên',
+            ),
+            Tab(
+              icon: Icon(Icons.people_alt_rounded),
+              text: 'Quản lý Nhân viên',
+            ),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildCategoriesTab(),
-          _buildAttendancesTab(),
-          _buildEmployeesTab(),
-        ],
+        children: [_buildAttendancesTab(), _buildEmployeesTab()],
       ),
       floatingActionButton: _buildFab(),
     );
@@ -986,159 +764,27 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Widget? _buildFab() {
     if (_tabController.index == 0) {
       return FloatingActionButton.extended(
-        onPressed: _showAddCategoryDialog,
-        backgroundColor: Colors.blue[800],
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Thêm danh mục', style: TextStyle(color: Colors.white)),
-      );
-    } else if (_tabController.index == 1) {
-      return FloatingActionButton.extended(
         onPressed: _fetchAttendances,
         backgroundColor: Colors.blue[800],
         icon: const Icon(Icons.sync, color: Colors.white),
-        label: const Text('Tải lại chấm công', style: TextStyle(color: Colors.white)),
+        label: const Text(
+          'Tải lại chấm công',
+          style: TextStyle(color: Colors.white),
+        ),
       );
     } else {
       return FloatingActionButton.extended(
         onPressed: _fetchEmployees,
         backgroundColor: Colors.blue[800],
         icon: const Icon(Icons.people, color: Colors.white),
-        label: const Text('Tải lại DS Nhân viên', style: TextStyle(color: Colors.white)),
+        label: const Text(
+          'Tải lại DS Nhân viên',
+          style: TextStyle(color: Colors.white),
+        ),
       );
     }
   }
 
-  // ============================================================================
-  // GIAO DIỆN TAB 1: DANH MỤC SẢN PHẨM
-  // ============================================================================
-  Widget _buildCategoriesTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16.0),
-          color: Colors.blue[50],
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: Colors.blue[800],
-                child: const Icon(Icons.admin_panel_settings, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Quản lý Danh mục sản phẩm (CRUD)',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'Quyền Quản trị viên (Admin) • Tổng: ${_categories.length} danh mục',
-                      style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _isLoadingCategories
-              ? const Center(child: CircularProgressIndicator())
-              : _categoryErrorMessage != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                            const SizedBox(height: 12),
-                            Text(
-                              _categoryErrorMessage!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _fetchCategories,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Thử lại'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : _categories.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.category_outlined, size: 64, color: Colors.grey[400]),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Chưa có danh mục nào.',
-                                style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                              ),
-                              const SizedBox(height: 12),
-                              ElevatedButton.icon(
-                                onPressed: _showAddCategoryDialog,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Thêm danh mục ngay'),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          itemCount: _categories.length,
-                          separatorBuilder: (context, index) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final cat = _categories[index];
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.blue[100],
-                                child: Text(
-                                  '#${cat.id}',
-                                  style: TextStyle(
-                                    color: Colors.blue[800],
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                cat.name,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                              ),
-                              subtitle: Text('Mã danh mục: ${cat.id}'),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, color: Colors.blue),
-                                    tooltip: 'Sửa tên',
-                                    onPressed: () => _showEditCategoryDialog(cat),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.red),
-                                    tooltip: 'Xóa danh mục',
-                                    onPressed: () => _confirmDeleteCategory(cat),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-        ),
-      ],
-    );
-  }
-
-  // ============================================================================
-  // GIAO DIỆN TAB 2: QUẢN LÝ CHẤM CÔNG TOÀN BỘ NHÂN VIÊN
-  // ============================================================================
   Widget _buildAttendancesTab() {
     final filtered = _filteredAttendances;
     final totalCount = filtered.length;
@@ -1170,7 +816,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       : null,
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 0,
+                    horizontal: 12,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide.none,
@@ -1186,13 +835,20 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   OutlinedButton.icon(
                     onPressed: _selectFilterDate,
                     style: OutlinedButton.styleFrom(
-                      backgroundColor: _selectedDateFilter != null ? Colors.blue[100] : Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      backgroundColor: _selectedDateFilter != null
+                          ? Colors.blue[100]
+                          : Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                     ),
                     icon: Icon(
                       Icons.calendar_today,
                       size: 16,
-                      color: _selectedDateFilter != null ? Colors.blue[800] : Colors.black87,
+                      color: _selectedDateFilter != null
+                          ? Colors.blue[800]
+                          : Colors.black87,
                     ),
                     label: Text(
                       _selectedDateFilter != null
@@ -1200,17 +856,26 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                           : 'Tất cả các ngày',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: _selectedDateFilter != null ? FontWeight.bold : FontWeight.normal,
-                        color: _selectedDateFilter != null ? Colors.blue[900] : Colors.black87,
+                        fontWeight: _selectedDateFilter != null
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: _selectedDateFilter != null
+                            ? Colors.blue[900]
+                            : Colors.black87,
                       ),
                     ),
                   ),
                   if (_selectedDateFilter != null) ...[
                     const SizedBox(width: 4),
                     IconButton(
-                      icon: const Icon(Icons.close, size: 18, color: Colors.red),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.red,
+                      ),
                       tooltip: 'Xóa lọc ngày',
-                      onPressed: () => setState(() => _selectedDateFilter = null),
+                      onPressed: () =>
+                          setState(() => _selectedDateFilter = null),
                     ),
                   ],
                   const Spacer(),
@@ -1219,14 +884,43 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     value: _selectedStatusFilter,
                     underline: const SizedBox(),
                     items: const [
-                      DropdownMenuItem(value: 'ALL', child: Text('Tất cả trạng thái', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'IN_PROGRESS', child: Text('Đang trong ca', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'COMPLETED', child: Text('Đã ra ca', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'GPS', child: Text('Điểm danh GPS', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'QR', child: Text('Điểm danh QR', style: TextStyle(fontSize: 12))),
+                      DropdownMenuItem(
+                        value: 'ALL',
+                        child: Text(
+                          'Tất cả trạng thái',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'IN_PROGRESS',
+                        child: Text(
+                          'Đang trong ca',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'COMPLETED',
+                        child: Text('Đã ra ca', style: TextStyle(fontSize: 12)),
+                      ),
+                      DropdownMenuItem(
+                        value: 'GPS',
+                        child: Text(
+                          'Điểm danh GPS',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'QR',
+                        child: Text(
+                          'Điểm danh QR',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
                     ],
                     onChanged: (val) {
-                      if (val != null) setState(() => _selectedStatusFilter = val);
+                      if (val != null) {
+                        setState(() => _selectedStatusFilter = val);
+                      }
                     },
                   ),
                 ],
@@ -1243,8 +937,16 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildStatBadge('Tổng cộng', '$totalCount lượt', Colors.blue),
-              _buildStatBadge('Đang trực', '$inProgressCount ca', Colors.orange),
-              _buildStatBadge('Đã hoàn thành', '$completedCount ca', Colors.green),
+              _buildStatBadge(
+                'Đang trực',
+                '$inProgressCount ca',
+                Colors.orange,
+              ),
+              _buildStatBadge(
+                'Đã hoàn thành',
+                '$completedCount ca',
+                Colors.green,
+              ),
             ],
           ),
         ),
@@ -1255,55 +957,60 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           child: _isLoadingAttendances
               ? const Center(child: CircularProgressIndicator())
               : _attendanceErrorMessage != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Không thể tải dữ liệu chấm công từ SQL Server:\n$_attendanceErrorMessage',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _fetchAttendances,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Tải lại'),
-                            ),
-                          ],
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red,
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Không thể tải dữ liệu chấm công từ SQL Server:\n$_attendanceErrorMessage',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _fetchAttendances,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Tải lại'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.event_busy, size: 56, color: Colors.grey[400]),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Không tìm thấy lượt chấm công nào phù hợp bộ lọc.',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 15),
                       ),
-                    )
-                  : filtered.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.event_busy, size: 56, color: Colors.grey[400]),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Không tìm thấy lượt chấm công nào phù hợp bộ lọc.',
-                                style: TextStyle(color: Colors.grey[600], fontSize: 15),
-                              ),
-                            ],
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _fetchAttendances,
-                          child: ListView.separated(
-                            padding: const EdgeInsets.all(12),
-                            itemCount: filtered.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final record = filtered[index];
-                              return _buildAttendanceCard(record);
-                            },
-                          ),
-                        ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _fetchAttendances,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filtered.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final record = filtered[index];
+                      return _buildAttendanceCard(record);
+                    },
+                  ),
+                ),
         ),
       ],
     );
@@ -1312,7 +1019,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Widget _buildStatBadge(String label, String value, MaterialColor color) {
     return Column(
       children: [
-        Text(value, style: TextStyle(color: color[800], fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(
+          value,
+          style: TextStyle(
+            color: color[800],
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
         Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
       ],
     );
@@ -1354,7 +1068,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     children: [
                       Text(
                         staffName,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
                       ),
                       Text(
                         'Phương thức: $method • Mã #${record.id}',
@@ -1364,11 +1081,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: (isDone ? Colors.blue : Colors.orange).withValues(alpha: 0.15),
+                    color: (isDone ? Colors.blue : Colors.orange).withValues(
+                      alpha: 0.15,
+                    ),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: isDone ? Colors.blue : Colors.orange),
+                    border: Border.all(
+                      color: isDone ? Colors.blue : Colors.orange,
+                    ),
                   ),
                   child: Text(
                     isDone ? 'Hoàn thành' : 'Đang trong ca',
@@ -1388,8 +1112,17 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Giờ vào ca (Check-in):', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                      Text(record.formattedCheckIn, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      const Text(
+                        'Giờ vào ca (Check-in):',
+                        style: TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
+                      Text(
+                        record.formattedCheckIn,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1397,8 +1130,17 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Giờ ra ca (Check-out):', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                      Text(record.formattedCheckOut, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      const Text(
+                        'Giờ ra ca (Check-out):',
+                        style: TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
+                      Text(
+                        record.formattedCheckOut,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1411,22 +1153,34 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 const SizedBox(width: 4),
                 Text(
                   'Tổng giờ làm: ${record.durationText}',
-                  style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold, fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.blue[800],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
-            if (record.locationName != null && record.locationName!.isNotEmpty) ...[
+            if (record.locationName != null &&
+                record.locationName!.isNotEmpty) ...[
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Icon(Icons.pin_drop_outlined, size: 14, color: Colors.grey),
+                  const Icon(
+                    Icons.pin_drop_outlined,
+                    size: 14,
+                    color: Colors.grey,
+                  ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       'Địa điểm: ${record.locationName}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.black54, fontSize: 12),
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ],
@@ -1449,7 +1203,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               const SizedBox(height: 4),
               Text(
                 'Ghi chú: ${record.notes}',
-                style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ],
 
@@ -1463,10 +1221,16 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.blue[800],
                     side: BorderSide(color: Colors.blue[300]!),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                   ),
                   icon: const Icon(Icons.edit_note, size: 16),
-                  label: const Text('Điều chỉnh', style: TextStyle(fontSize: 12)),
+                  label: const Text(
+                    'Điều chỉnh',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
@@ -1474,7 +1238,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red[800],
                     side: BorderSide(color: Colors.red[300]!),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                   ),
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: const Text('Xóa', style: TextStyle(fontSize: 12)),
@@ -1514,11 +1281,17 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       children: [
                         const Text(
                           'Quản lý Nhân viên & Phân quyền',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         Text(
                           'Cấp quyền và đổi vai trò người dùng (API: /api/Admin/employees)',
-                          style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -1542,7 +1315,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       : null,
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 0,
+                    horizontal: 12,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide.none,
@@ -1557,55 +1333,60 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           child: _isLoadingEmployees
               ? const Center(child: CircularProgressIndicator())
               : _employeeErrorMessage != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Không thể tải danh sách nhân viên:\n$_employeeErrorMessage',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _fetchEmployees,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Thử lại'),
-                            ),
-                          ],
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: Colors.red,
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Không thể tải danh sách nhân viên:\n$_employeeErrorMessage',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _fetchEmployees,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Thử lại'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person_off, size: 56, color: Colors.grey[400]),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Chưa có nhân viên nào trong danh sách.',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 15),
                       ),
-                    )
-                  : filtered.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.person_off, size: 56, color: Colors.grey[400]),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Chưa có nhân viên nào trong danh sách.',
-                                style: TextStyle(color: Colors.grey[600], fontSize: 15),
-                              ),
-                            ],
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _fetchEmployees,
-                          child: ListView.separated(
-                            padding: const EdgeInsets.all(12),
-                            itemCount: filtered.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final emp = filtered[index];
-                              return _buildEmployeeCard(emp);
-                            },
-                          ),
-                        ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _fetchEmployees,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filtered.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final emp = filtered[index];
+                      return _buildEmployeeCard(emp);
+                    },
+                  ),
+                ),
         ),
       ],
     );
@@ -1661,8 +1442,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (emp.email != null && emp.email!.isNotEmpty)
-              Text('Email: ${emp.email}', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
-            Text('ID: ${emp.id}', style: const TextStyle(color: Colors.black38, fontSize: 11)),
+              Text(
+                'Email: ${emp.email}',
+                style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              ),
+            Text(
+              'ID: ${emp.id}',
+              style: const TextStyle(color: Colors.black38, fontSize: 11),
+            ),
           ],
         ),
         trailing: ElevatedButton.icon(

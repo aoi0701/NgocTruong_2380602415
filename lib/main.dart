@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:alarm/alarm.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/login_screen.dart';
 
@@ -10,7 +9,6 @@ void main() async {
   } catch (e) {
     debugPrint("Failed to load .env file: $e");
   }
-  await Alarm.init();
   runApp(const MyApp());
 }
 

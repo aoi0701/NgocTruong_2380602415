@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using NgocTruong_2380602415.Api.Data;
 using NgocTruong_2380602415.Api.Models;
-using NgocTruong_2380602415.Api.Repositories;
 using NgocTruong_2380602415.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,7 +15,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddScoped<IProductRepository, ProductRepository>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
 builder.Services.AddSingleton<IOtpService, OtpService>();
 

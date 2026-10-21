@@ -8,6 +8,8 @@ public class ApplicationDbContext : IdentityDbContext<User>
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
+    // Historical tables remain mapped to preserve the existing SQL schema and migration history.
+    // They have no application endpoints and receive no demo seed data.
     public DbSet<Product> Products { get; set; } = null!;
     public DbSet<Post> Posts { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
