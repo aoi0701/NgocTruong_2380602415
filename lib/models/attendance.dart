@@ -13,6 +13,9 @@ class AttendanceRecord {
   final String? locationName;
   final String? status; // 'VALID', 'ON_TIME', 'LATE', 'Pending', 'Approved', etc.
   final String? notes;
+  final String? feedbackMood;
+  final String? feedbackNote;
+  final DateTime? feedbackTime;
 
   AttendanceRecord({
     this.id,
@@ -29,6 +32,9 @@ class AttendanceRecord {
     this.locationName,
     this.status,
     this.notes,
+    this.feedbackMood,
+    this.feedbackNote,
+    this.feedbackTime,
   });
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
@@ -63,6 +69,9 @@ class AttendanceRecord {
       locationName: (json['locationName'] ?? json['LocationName'] ?? json['location'] ?? json['Location'])?.toString(),
       status: (json['status'] ?? json['Status'] ?? 'VALID')?.toString(),
       notes: (json['notes'] ?? json['Notes'] ?? json['note'] ?? json['Note'])?.toString(),
+      feedbackMood: (json['feedbackMood'] ?? json['FeedbackMood'])?.toString(),
+      feedbackNote: (json['feedbackNote'] ?? json['FeedbackNote'])?.toString(),
+      feedbackTime: parseDate(json['feedbackTime'] ?? json['FeedbackTime']),
     );
   }
 
@@ -82,6 +91,9 @@ class AttendanceRecord {
       'locationName': locationName,
       'status': status,
       'notes': notes,
+      'feedbackMood': feedbackMood,
+      'feedbackNote': feedbackNote,
+      'feedbackTime': feedbackTime?.toIso8601String(),
     };
   }
 
@@ -100,6 +112,9 @@ class AttendanceRecord {
     String? locationName,
     String? status,
     String? notes,
+    String? feedbackMood,
+    String? feedbackNote,
+    DateTime? feedbackTime,
   }) {
     return AttendanceRecord(
       id: id ?? this.id,
@@ -116,6 +131,9 @@ class AttendanceRecord {
       locationName: locationName ?? this.locationName,
       status: status ?? this.status,
       notes: notes ?? this.notes,
+      feedbackMood: feedbackMood ?? this.feedbackMood,
+      feedbackNote: feedbackNote ?? this.feedbackNote,
+      feedbackTime: feedbackTime ?? this.feedbackTime,
     );
   }
 

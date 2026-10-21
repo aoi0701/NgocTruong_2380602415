@@ -128,6 +128,37 @@ void main() {
       expect(updated.status, 'MANUAL_EDIT');
       expect(updated.notes, 'Updated note after edit');
     });
+
+    test('Feedback fields serialization in fromJson and toJson', () {
+      final feedbackJson = {
+        'id': 505,
+        'userId': 'staff_feedback',
+        'checkInTime': '2026-10-21T08:00:00Z',
+        'checkOutTime': '2026-10-21T17:00:00Z',
+        'method': 'GPS',
+        'feedbackMood': '😓 Mệt',
+        'feedbackNote': 'Hôm nay đông khách',
+        'feedbackTime': '2026-10-21T17:01:00Z',
+      };
+
+      final record = AttendanceRecord.fromJson(feedbackJson);
+      expect(record.id, 505);
+      expect(record.feedbackMood, '😓 Mệt');
+      expect(record.feedbackNote, 'Hôm nay đông khách');
+      expect(record.feedbackTime, isNotNull);
+
+      final exported = record.toJson();
+      expect(exported['feedbackMood'], '😓 Mệt');
+      expect(exported['feedbackNote'], 'Hôm nay đông khách');
+      expect(exported['feedbackTime'], isNotNull);
+
+      final updatedWithFeedback = record.copyWith(
+        feedbackMood: '😄 Rất tốt',
+        feedbackNote: 'Đã khỏe lại',
+      );
+      expect(updatedWithFeedback.feedbackMood, '😄 Rất tốt');
+      expect(updatedWithFeedback.feedbackNote, 'Đã khỏe lại');
+    });
   });
 
   group('Employee Model Tests', () {

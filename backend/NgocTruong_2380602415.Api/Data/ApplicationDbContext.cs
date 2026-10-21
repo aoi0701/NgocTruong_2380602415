@@ -57,6 +57,8 @@ public class ApplicationDbContext : IdentityDbContext<User>
             entity.Property(a => a.DeviceInfo).HasMaxLength(255);
             entity.Property(a => a.Status).HasMaxLength(50).IsRequired();
             entity.Property(a => a.Notes).HasMaxLength(1000);
+            entity.Property(a => a.FeedbackMood).HasMaxLength(50);
+            entity.Property(a => a.FeedbackNote).HasMaxLength(500);
             entity.HasOne(a => a.User)
                   .WithMany()
                   .HasForeignKey(a => a.UserId)

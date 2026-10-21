@@ -46,6 +46,12 @@ public class FaceEnrollmentRequest
     public string FaceVectorJson { get; set; } = string.Empty;
 }
 
+public class AttendanceFeedbackRequest
+{
+    public string Mood { get; set; } = string.Empty;
+    public string? Notes { get; set; }
+}
+
 public class QrCodeItem
 {
     public string Token { get; set; } = string.Empty;
@@ -288,6 +294,55 @@ public class AttendanceController : ControllerBase
         {
             status = true,
             message = "Chấm công ra ca (Check-out) thành công!",
+            data = record
+        });
+    }
+
+    [HttpPost("{id}/feedback")]
+    public async Task<IActionResult> SubmitFeedback(int id, [FromBody] AttendanceFeedbackRequest? request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Mood))
+        {
+            return BadRequest(new
+            {
+                status = false,
+                message = "Vui lòng chọn cảm nhận sau ca làm việc trước khi gửi."
+            });
+        }
+
+        var userId = await GetCurrentUserIdAsync();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { status = false, message = "Không xác định được danh tính người dùng." });
+        }
+
+        var record = await _context.AttendanceRecords.FindAsync(id);
+        if (record == null)
+        {
+            return NotFound(new
+            {
+                status = false,
+                message = "Không tìm thấy ca làm việc cần gửi cảm nhận."
+            });
+        }
+
+        var isAdmin = User.IsInRole("Admin");
+        if (record.UserId != userId && !isAdmin)
+        {
+            return Forbid();
+        }
+
+        record.FeedbackMood = request.Mood.Trim();
+        record.FeedbackNote = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+        record.FeedbackTime = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        _logger.LogInformation("Người dùng {UserId} đã gửi cảm nhận cho ca làm Id {RecordId}: {Mood}", userId, id, record.FeedbackMood);
+
+        return Ok(new
+        {
+            status = true,
+            message = "Gửi cảm nhận sau ca làm thành công! Cảm ơn bạn.",
             data = record
         });
     }
@@ -549,7 +604,10 @@ public class AttendanceController : ControllerBase
                 locationName = a.LocationName,
                 deviceInfo = a.DeviceInfo,
                 status = a.Status,
-                notes = a.Notes
+                notes = a.Notes,
+                feedbackMood = a.FeedbackMood,
+                feedbackNote = a.FeedbackNote,
+                feedbackTime = a.FeedbackTime
             })
             .ToListAsync();
 

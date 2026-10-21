@@ -185,6 +185,73 @@ class AttendanceService {
     }
   }
 
+  /// Gửi cảm nhận sau ca làm: POST /api/Attendance/{id}/feedback
+  Future<AttendanceResult> submitFeedback({
+    required int recordId,
+    required String mood,
+    String? notes,
+  }) async {
+    final Map<String, dynamic> body = {
+      'mood': mood,
+    };
+    if (notes != null && notes.isNotEmpty) {
+      body['notes'] = notes;
+    }
+
+    try {
+      final response = await _apiClient.post('Attendance/$recordId/feedback', body: body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        dynamic decoded;
+        try {
+          decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        } catch (_) {
+          decoded = null;
+        }
+
+        AttendanceRecord? record;
+        String message = 'Gửi cảm nhận sau ca làm thành công! Cảm ơn bạn.';
+
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['message'] != null) {
+            message = decoded['message'].toString();
+          }
+          final dynamic dataPart = decoded['data'] ?? decoded['record'] ?? decoded;
+          if (dataPart is Map<String, dynamic>) {
+            record = AttendanceRecord.fromJson(dataPart);
+          }
+        }
+
+        return AttendanceResult(
+          success: true,
+          message: message,
+          data: record,
+          statusCode: response.statusCode,
+        );
+      } else {
+        String errorMsg = 'Gửi cảm nhận thất bại (Mã lỗi ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            errorMsg = decoded['message'] ?? decoded['error'] ?? decoded['title'] ?? errorMsg;
+          }
+        } catch (_) {}
+
+        return AttendanceResult(
+          success: false,
+          message: errorMsg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi kết nối máy chủ khi gửi cảm nhận: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
   /// Lấy lịch sử chấm công của người dùng hiện tại: GET /api/Attendance/my-history
   Future<List<AttendanceRecord>> getMyHistory() async {
     try {

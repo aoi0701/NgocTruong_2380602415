@@ -41,4 +41,12 @@ public class AttendanceRecord
 
     [MaxLength(1000)]
     public string? Notes { get; set; }
+
+    [MaxLength(50)]
+    public string? FeedbackMood { get; set; }
+
+    [MaxLength(500)]
+    public string? FeedbackNote { get; set; }
+
+    public DateTime? FeedbackTime { get; set; }
 }

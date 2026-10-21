@@ -406,5 +406,83 @@ public class AttendanceAndOtpUnitTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.GetAsync("/api/Attendance/all")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.PostAsJsonAsync("/api/Attendance/check-in", new { })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.PostAsJsonAsync("/api/Attendance/check-out", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonClient.PostAsJsonAsync("/api/Attendance/1/feedback", new { mood = "😄 Rất tốt" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Attendance_submit_feedback_without_mood_returns_400()
+    {
+        using var database = new TestDatabase();
+        using var app = database.Open();
+        using var staffClient = await app.CreateAuthenticatedClientAsync("staff", "Staff@123456");
+
+        // 1. Check in
+        var checkInRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-in", new
+        {
+            method = "GPS",
+            latitude = 10.8552,
+            longitude = 106.7856
+        });
+        Assert.Equal(HttpStatusCode.OK, checkInRes.StatusCode);
+        var checkInData = JsonSerializer.Deserialize<JsonElement>(await checkInRes.Content.ReadAsStringAsync());
+        int recordId = checkInData.GetProperty("data").GetProperty("id").GetInt32();
+
+        // 2. Check out
+        var checkOutRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-out", new { method = "GPS" });
+        Assert.Equal(HttpStatusCode.OK, checkOutRes.StatusCode);
+
+        // 3. Gửi feedback rỗng mood -> phải báo lỗi 400
+        var emptyFeedbackRes = await staffClient.PostAsJsonAsync($"/api/Attendance/{recordId}/feedback", new
+        {
+            mood = "",
+            notes = "Ca này ổn"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, emptyFeedbackRes.StatusCode);
+    }
+
+    [Fact]
+    public async Task Attendance_submit_feedback_saves_mood_and_notes_and_retrieves_in_history()
+    {
+        using var database = new TestDatabase();
+        using var app = database.Open();
+        using var staffClient = await app.CreateAuthenticatedClientAsync("staff", "Staff@123456");
+
+        // 1. Check-in
+        var checkInRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-in", new
+        {
+            method = "GPS",
+            latitude = 10.8552,
+            longitude = 106.7856
+        });
+        Assert.Equal(HttpStatusCode.OK, checkInRes.StatusCode);
+        var checkInData = JsonSerializer.Deserialize<JsonElement>(await checkInRes.Content.ReadAsStringAsync());
+        int recordId = checkInData.GetProperty("data").GetProperty("id").GetInt32();
+
+        // 2. Check-out
+        var checkOutRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-out", new { method = "GPS" });
+        Assert.Equal(HttpStatusCode.OK, checkOutRes.StatusCode);
+
+        // 3. Gửi feedback hợp lệ: "😓 Mệt", "Hôm nay đông khách"
+        var feedbackRes = await staffClient.PostAsJsonAsync($"/api/Attendance/{recordId}/feedback", new
+        {
+            mood = "😓 Mệt",
+            notes = "Hôm nay đông khách"
+        });
+        Assert.Equal(HttpStatusCode.OK, feedbackRes.StatusCode);
+        var feedbackData = JsonSerializer.Deserialize<JsonElement>(await feedbackRes.Content.ReadAsStringAsync());
+        Assert.True(feedbackData.GetProperty("status").GetBoolean());
+        Assert.Equal("😓 Mệt", feedbackData.GetProperty("data").GetProperty("feedbackMood").GetString());
+        Assert.Equal("Hôm nay đông khách", feedbackData.GetProperty("data").GetProperty("feedbackNote").GetString());
+        Assert.NotNull(feedbackData.GetProperty("data").GetProperty("feedbackTime").GetString());
+
+        // 4. Lấy lịch sử cá nhân (my-history) -> kiểm tra feedback đã được lưu trong DB
+        var historyRes = await staffClient.GetAsync("/api/Attendance/my-history");
+        Assert.Equal(HttpStatusCode.OK, historyRes.StatusCode);
+        var historyList = JsonSerializer.Deserialize<JsonElement>(await historyRes.Content.ReadAsStringAsync());
+        Assert.True(historyList.GetArrayLength() > 0);
+
+        var firstRecord = historyList[0];
+        Assert.Equal("😓 Mệt", firstRecord.GetProperty("feedbackMood").GetString());
+        Assert.Equal("Hôm nay đông khách", firstRecord.GetProperty("feedbackNote").GetString());
     }
 }
