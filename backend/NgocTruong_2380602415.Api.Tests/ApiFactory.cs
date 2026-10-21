@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NgocTruong_2380602415.Api.Data;
+using NgocTruong_2380602415.Api.Services;
 
 namespace NgocTruong_2380602415.Api.Tests;
 
@@ -42,7 +43,10 @@ internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Pr
     public async Task<HttpClient> CreateAuthenticatedClientAsync(string username = "admin", string password = "Admin@123456")
     {
         var client = CreateClient();
-        var response = await client.PostAsJsonAsync("/api/Authenticate/login", new { username, password });
+        await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username });
+        var otpService = Services.GetRequiredService<IOtpService>();
+        var otp = otpService.GetActiveOtpForTesting(username);
+        var response = await client.PostAsJsonAsync("/api/Authenticate/login", new { username, password, otp });
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         var token = json.GetProperty("token").GetString();

@@ -9,6 +9,7 @@ import 'package:ngoc_truong_2380602415/screens/registration_screen.dart';
 import 'package:ngoc_truong_2380602415/screens/admin_screen.dart';
 import 'package:ngoc_truong_2380602415/screens/staff_screen.dart';
 import 'package:ngoc_truong_2380602415/screens/main_screen.dart';
+import 'package:ngoc_truong_2380602415/screens/face_auth_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -105,6 +106,62 @@ void main() {
       expect(find.text('Chức năng chính'), findsOneWidget);
       expect(find.text('Chợ sản phẩm (MarketScreen)'), findsOneWidget);
       expect(find.text('Bảng tin bài đăng (FeedScreen)'), findsOneWidget);
+    });
+
+    testWidgets('RegistrationScreen has only User and Staff roles in dropdown', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RegistrationScreen(),
+        ),
+      );
+      await tester.pump();
+
+      // Find dropdown and tap to open
+      final dropdownFinder = find.byType(DropdownButtonFormField<String>);
+      expect(dropdownFinder, findsOneWidget);
+      await tester.tap(dropdownFinder);
+      await tester.pumpAndSettle();
+
+      // Check User and Staff exist, Admin does NOT exist
+      expect(find.text('Khách hàng / Sinh viên (User)'), findsWidgets);
+      expect(find.text('Nhân viên vận hành (Staff)'), findsWidgets);
+      expect(find.text('Quản trị viên hệ thống (Admin)'), findsNothing);
+    });
+
+    testWidgets('LoginScreen blocks login when OTP is missing', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: LoginScreen(),
+        ),
+      );
+      await tester.pump();
+
+      // Enter username and password without OTP
+      await tester.enterText(find.byType(TextField).at(0), 'testuser');
+      await tester.enterText(find.byType(TextField).at(1), 'password123');
+
+      // Tap Đăng nhập button
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Đăng nhập'));
+      await tester.pump();
+
+      // SnackBar should alert that OTP is required
+      expect(find.text('Vui lòng nhập mã OTP được gửi về email để xác thực đăng nhập'), findsOneWidget);
+    });
+
+    testWidgets('FaceAuthScreen enforces anti-spoofing camera-only without gallery option', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: FaceAuthScreen(),
+        ),
+      );
+      await tester.pump();
+
+      // Verify anti-spoofing badge and camera action
+      expect(find.textContaining('Chống giả mạo: Chặn ảnh từ thư viện'), findsOneWidget);
+      expect(find.text('Chụp Camera quét khuôn mặt xác thực'), findsOneWidget);
+      // Ensure no gallery button exists
+      expect(find.textContaining('Chọn ảnh từ bộ nhớ'), findsNothing);
+      expect(find.byIcon(Icons.photo_library_rounded), findsNothing);
     });
   });
 }

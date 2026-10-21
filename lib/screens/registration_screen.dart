@@ -76,7 +76,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Tính năng tự động điền khả dụng trên thiết bị di động có Google Services.'),
+            content: const Text('Tính năng tự động điền khả dụng trên thiết bị di động có Google Services.'),
             backgroundColor: Colors.orange[800],
           ),
         );
@@ -92,6 +92,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     final initials = _initialsController.text.trim();
     final role = _roleController.text.trim();
 
+    // 1. Kiểm tra không để trống trường nào
     if (username.isEmpty ||
         email.isEmpty ||
         password.isEmpty ||
@@ -99,7 +100,41 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         role.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập đầy đủ thông tin'),
+          content: Text('Vui lòng nhập đầy đủ tất cả các trường thông tin'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 2. Validate định dạng email đúng chuẩn (@ và domain)
+    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    if (!emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Định dạng email không hợp lệ (Ví dụ: sinhvien@domain.edu.vn)'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 3. Nghiêm cấm chọn hoặc gửi vai trò Admin qua form đăng ký công khai
+    if (role != 'User' && role != 'Staff') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vai trò không hợp lệ. Chỉ chấp nhận User hoặc Staff.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // 4. Validate mật khẩu tối thiểu 6 ký tự
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mật khẩu phải có ít nhất 6 ký tự'),
           backgroundColor: Colors.red,
         ),
       );
@@ -132,9 +167,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đăng ký thành công! Vui lòng đăng nhập.'),
+          SnackBar(
+            content: Text(result['message'] ?? 'Đăng ký tài khoản thành công! Vui lòng đăng nhập.'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
           ),
         );
         Navigator.pop(context);
@@ -144,6 +180,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           SnackBar(
             content: Text(errorMessage),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -152,7 +189,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi kết nối: $e'),
+          content: Text('Lỗi kết nối khi đăng ký: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -301,9 +338,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Vai trò (Role selection: User / Staff / Admin)
+                // Vai trò: Chỉ cho phép User hoặc Staff (Gỡ bỏ hoàn toàn tùy chọn Admin)
                 DropdownButtonFormField<String>(
-                  value: ['User', 'Staff', 'Admin'].contains(_roleController.text)
+                  value: ['User', 'Staff'].contains(_roleController.text)
                       ? _roleController.text
                       : 'User',
                   decoration: InputDecoration(
@@ -327,10 +364,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     DropdownMenuItem(
                       value: 'Staff',
                       child: Text('Nhân viên vận hành (Staff)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Admin',
-                      child: Text('Quản trị viên hệ thống (Admin)'),
                     ),
                   ],
                   onChanged: (val) {

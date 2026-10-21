@@ -5,6 +5,7 @@ import 'market_screen.dart';
 import 'feed_screen.dart';
 import '../HomeScreen.dart';
 import 'biometric_qr_screen.dart';
+import 'location_share_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -273,6 +274,22 @@ class _MainScreenState extends State<MainScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Nút dẫn tới Điểm danh GPS & Chia sẻ vị trí
+          _buildFeatureCard(
+            title: 'Điểm danh & Chia sẻ vị trí GPS',
+            subtitle: 'Xác thực tọa độ định vị GPS thực tế tại cơ sở HUTECH và chia sẻ vị trí qua bản đồ.',
+            icon: Icons.location_on_rounded,
+            color: Colors.teal,
+            buttonText: 'Mở Định vị GPS',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LocationShareScreen()),
               );
             },
           ),

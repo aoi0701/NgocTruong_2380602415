@@ -8,18 +8,21 @@ class Auth {
   static final AuthService _authService = AuthService();
   static final ApiClient _apiClient = ApiClient();
 
-  // Yêu cầu gửi OTP
+  /// Yêu cầu gửi mã OTP tới email người dùng
   static Future<Map<String, dynamic>> requestOtp(String username) async {
     return await _authService.requestOtp(username);
   }
 
-  // Đăng nhập có hỗ trợ mã OTP
-  static Future<Map<String, dynamic>> login(String username, String password, {String? otp}) async {
-    final result = await _authService.login(username, password, otp: otp);
-    return result;
+  /// Đăng nhập với tên tài khoản, mật khẩu và mã OTP
+  static Future<Map<String, dynamic>> login(
+    String username,
+    String password, {
+    String? otp,
+  }) async {
+    return await _authService.login(username, password, otp: otp);
   }
 
-  // Đăng ký tài khoản mới
+  /// Đăng ký tài khoản mới (Chỉ cho phép User hoặc Staff)
   static Future<Map<String, dynamic>> register({
     required String username,
     required String email,
@@ -27,12 +30,13 @@ class Auth {
     required String initials,
     required String role,
   }) async {
+    final cleanRole = role.trim();
     final Map<String, dynamic> body = {
-      "username": username,
-      "email": email,
+      "username": username.trim(),
+      "email": email.trim(),
       "password": password,
-      "initials": initials,
-      "role": role,
+      "initials": initials.trim(),
+      "role": cleanRole,
     };
 
     try {
@@ -70,23 +74,23 @@ class Auth {
     } catch (e) {
       return {
         'success': false,
-        'message': 'Lỗi kết nối: ${e.toString()}',
+        'message': 'Lỗi kết nối máy chủ: ${e.toString()}',
       };
     }
   }
 
-  // Đăng xuất
+  /// Đăng xuất và dọn dẹp sạch sẽ phiên lưu trữ
   static Future<void> logout() async {
     await _authService.logout();
   }
 
-  // Lấy token
+  /// Lấy JWT token đang lưu
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('jwt_token');
   }
 
-  // Lấy vai trò (Role)
+  /// Lấy vai trò (Role) của người dùng hiện tại
   static Future<String?> getRole() async {
     final prefs = await SharedPreferences.getInstance();
     String? role = prefs.getString('user_role');
@@ -116,7 +120,7 @@ class Auth {
     return role;
   }
 
-  // Lấy tên hiển thị
+  /// Lấy tên hiển thị của người dùng
   static Future<String?> getUsername() async {
     final prefs = await SharedPreferences.getInstance();
     String? name = prefs.getString('user_name');
@@ -138,14 +142,20 @@ class Auth {
     return null;
   }
 
-  // Kiểm tra trạng thái đăng nhập
+  /// Kiểm tra xem người dùng có phiên đăng nhập hợp lệ và token còn hạn hay không
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token');
     if (token == null || token.isEmpty) return false;
     try {
-      return !JwtDecoder.isExpired(token);
+      final expired = JwtDecoder.isExpired(token);
+      if (expired) {
+        await logout();
+        return false;
+      }
+      return true;
     } catch (_) {
+      await logout();
       return false;
     }
   }

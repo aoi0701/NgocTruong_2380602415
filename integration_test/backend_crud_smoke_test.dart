@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:Nhom_3_nguoi/HomeScreen.dart';
-import 'package:Nhom_3_nguoi/main.dart' as app;
-import 'package:Nhom_3_nguoi/practice/features/posts/post_api.dart';
-import 'package:Nhom_3_nguoi/practice/features/posts/posts_provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/products/product_api.dart';
-import 'package:Nhom_3_nguoi/practice/features/products/product_provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/settings/settings_provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/shared/api_endpoint.dart';
+import 'package:ngoc_truong_2380602415/HomeScreen.dart';
+import 'package:ngoc_truong_2380602415/main.dart' as app;
+import 'package:ngoc_truong_2380602415/practice/features/posts/post_api.dart';
+import 'package:ngoc_truong_2380602415/practice/features/posts/posts_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/products/product_api.dart';
+import 'package:ngoc_truong_2380602415/practice/features/products/product_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/settings/settings_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/shared/api_endpoint.dart';
 import 'package:provider/provider.dart';
 
 // Real Android plugins, HTTP and SQL backend; creates and removes only unique rows.

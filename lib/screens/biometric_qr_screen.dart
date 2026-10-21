@@ -9,10 +9,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../config/config_url.dart';
 import '../models/productPost.dart';
 import '../services/api_client.dart';
-import '../utils/auth.dart';
-import 'admin_screen.dart';
+import '../services/attendance_service.dart';
 import 'main_screen.dart';
-import 'staff_screen.dart';
 
 class BiometricQrScreen extends StatefulWidget {
   const BiometricQrScreen({super.key});
@@ -32,8 +30,10 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
   String _biometricStatus = 'Chưa quét vân tay';
   String _scannedResult = 'Chưa có mã nào được quét';
   bool _isHandlingScan = false;
+  DateTime _lastScanTimestamp = DateTime.fromMillisecondsSinceEpoch(0);
+
   final TextEditingController _qrDataController = TextEditingController(
-    text: 'LOGIN:admin:Admin@123456',
+    text: 'CHECKIN:HUTECH_CAMPUS_E_2026',
   );
 
   @override
@@ -51,7 +51,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
   }
 
   // ============================================================================
-  // 1. CẢM BIẾN SINH TRẮC HỌC & VÂN TAY (local_auth 3.0.2)
+  // 1. CẢM BIẾN SINH TRẮC HỌC & VÂN TAY (local_auth)
   // ============================================================================
   Future<void> _authenticateWithBiometrics() async {
     try {
@@ -87,11 +87,11 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
               children: [
                 Icon(Icons.fingerprint, color: Colors.green),
                 SizedBox(width: 8),
-                Text('Đăng nhập Vân tay'),
+                Text('Xác thực Vân tay'),
               ],
             ),
             content: const Text(
-              'Cảm biến sinh trắc học đã nhận diện khớp vân tay của bạn.',
+              'Cảm biến sinh trắc học đã nhận diện khớp vân tay của bạn thành công.',
             ),
             actions: [
               ElevatedButton(
@@ -111,21 +111,26 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
     } catch (e) {
       setState(() {
         _biometricStatus =
-            'Lỗi cảm biến: $e\n(Trên máy ảo Android, hãy bấm nút "Touch the sensor" trong Extended controls).';
+            'Lỗi cảm biến: $e\n(Trên máy ảo Android, hãy dùng lệnh mô phỏng fingerprint).';
       });
     }
   }
 
   // ============================================================================
-  // 2. NHẬN DIỆN MÃ QR THÔNG MINH (Smart QR Recognition)
+  // 2. NHẬN DIỆN MÃ QR & CHẤM CÔNG THỰC TẾ
   // ============================================================================
 
   void _onDetectBarcode(BarcodeCapture capture) {
     if (_isHandlingScan) return;
+    final now = DateTime.now();
+    // Chống quét trùng lặp trong khoảng 2.5 giây
+    if (now.difference(_lastScanTimestamp).inMilliseconds < 2500) return;
+
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isNotEmpty) {
       final code = barcodes.first.rawValue;
       if (code != null && code.trim().isNotEmpty) {
+        _lastScanTimestamp = now;
         _handleDetectedCode(code.trim());
       }
     }
@@ -166,18 +171,13 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
       _scannedResult = code;
     });
 
-    // Trường hợp 1: Nhận diện mã QR ĐĂNG NHẬP (Format: LOGIN:username:password)
+    // Cảnh báo nếu gặp mã QR mật khẩu dạng rõ (đã bãi bỏ vì lý do an toàn)
     if (code.startsWith('LOGIN:')) {
-      final parts = code.split(':');
-      if (parts.length >= 3) {
-        final username = parts[1];
-        final password = parts.sublist(2).join(':');
-        _showLoginQrDialog(username, password);
-        return;
-      }
+      _showSecurityWarningDialog();
+      return;
     }
 
-    // Trường hợp 2: Nhận diện mã QR SẢN PHẨM (Format: PRODUCT:1 hoặc PRD:1)
+    // Trường hợp 1: Nhận diện mã QR SẢN PHẨM (Format: PRODUCT:1 hoặc PRD:1)
     if (code.startsWith('PRODUCT:') || code.startsWith('PRD:')) {
       final idStr = code.split(':').last;
       final id = int.tryParse(idStr);
@@ -187,28 +187,59 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
       }
     }
 
-    // Trường hợp 3: Nhận diện mã QR ĐIỂM DANH / CHẤM CÔNG (Format: CHECKIN:...)
-    if (code.startsWith('CHECKIN:')) {
-      final loc = code.replaceFirst('CHECKIN:', '');
-      _showCheckinQrDialog(loc);
+    // Trường hợp 2: Nhận diện mã QR ĐIỂM DANH / CHẤM CÔNG (Format: CHECKIN:... hoặc CHECKOUT:...)
+    if (code.startsWith('CHECKIN:') || code.startsWith('CHECKOUT:') || code.contains('CAMPUS')) {
+      _showAttendanceQrDialog(code);
       return;
     }
 
-    // Trường hợp 4: Mã QR chung / Barcode sản phẩm
+    // Trường hợp 3: Mã QR chung
     _showGeneralQrDialog(code);
   }
 
-  // Dialog Đăng nhập từ QR
-  void _showLoginQrDialog(String username, String password) {
+  void _showSecurityWarningDialog() {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.vpn_key_rounded, color: Colors.blue),
+            Icon(Icons.security, color: Colors.red),
             SizedBox(width: 8),
-            Text('Nhận diện QR Đăng nhập'),
+            Text('Cảnh báo bảo mật'),
+          ],
+        ),
+        content: const Text(
+          'Mã QR chứa mật khẩu văn bản rõ (LOGIN:...) đã bị vô hiệu hóa hoàn toàn để đảm bảo an toàn thông tin theo tiêu chuẩn OWASP.\n\n'
+          'Vui lòng sử dụng tính năng Đăng nhập bằng mã OTP, Sinh trắc học vân tay hoặc tài khoản được cấp.',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _isHandlingScan = false);
+            },
+            child: const Text('Đã hiểu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dialog Chấm công QR gửi dữ liệu lên Backend SQL Server
+  void _showAttendanceQrDialog(String qrCode) {
+    final bool isCheckoutSuggestion = qrCode.startsWith('CHECKOUT:');
+    final String cleanToken = qrCode.replaceFirst('CHECKIN:', '').replaceFirst('CHECKOUT:', '');
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_scanner, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('Điểm danh QR'),
           ],
         ),
         content: Column(
@@ -216,28 +247,28 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Đã nhận diện thông tin tài khoản từ mã QR:',
+              'Đã nhận diện mã điểm danh địa điểm làm việc:',
               style: TextStyle(fontSize: 14),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue[50],
+                color: Colors.purple[50],
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue[200]!),
+                border: Border.all(color: Colors.purple[200]!),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Tài khoản: $username', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('📍 Mã địa điểm: $cleanToken', style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text('Mật khẩu: ${'*' * password.length}', style: const TextStyle(color: Colors.grey)),
+                  Text('Mã đầy đủ: $qrCode', style: const TextStyle(fontSize: 12, color: Colors.black54)),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            const Text('Bạn có muốn đăng nhập ngay vào hệ thống?'),
+            const SizedBox(height: 14),
+            const Text('Vui lòng chọn loại chấm công để gửi xác nhận đến máy chủ:'),
           ],
         ),
         actions: [
@@ -249,74 +280,125 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
             child: const Text('Hủy'),
           ),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[700],
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
+            style: ElevatedButton.styleFrom(backgroundColor: isCheckoutSuggestion ? Colors.grey[700] : Colors.green[700]),
+            onPressed: () {
               Navigator.pop(ctx);
-              await _executeLogin(username, password);
+              _submitAttendance(qrToken: qrCode, isCheckIn: true, locationName: cleanToken);
             },
-            icon: const Icon(Icons.login),
-            label: const Text('Đăng nhập ngay'),
+            icon: const Icon(Icons.login, size: 16, color: Colors.white),
+            label: const Text('VÀO CA (Check-in)', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _submitAttendance(qrToken: qrCode, isCheckIn: false, locationName: cleanToken);
+            },
+            icon: const Icon(Icons.logout, size: 16, color: Colors.white),
+            label: const Text('RA CA (Check-out)', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _executeLogin(String username, String password) async {
+  Future<void> _submitAttendance({
+    required String qrToken,
+    required bool isCheckIn,
+    required String locationName,
+  }) async {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Đang xác thực mã QR với máy chủ...'),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
 
     try {
-      final result = await Auth.login(username, password);
-      if (!mounted) return;
-      Navigator.pop(context); // Tắt dialog loading
-
-      if (result['success'] == true) {
-        final String role = (result['role'] ?? 'User').toString().toLowerCase();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đăng nhập thành công với vai trò: $role'),
-            backgroundColor: Colors.green,
-          ),
+      final AttendanceResult result;
+      if (isCheckIn) {
+        result = await AttendanceService.instance.checkIn(
+          method: 'QR',
+          qrToken: qrToken,
+          locationName: locationName,
+          notes: 'Quét mã QR địa điểm: $locationName',
         );
-
-        if (role == 'admin') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminScreen()),
-          );
-        } else if (role == 'staff' || role == 'nhanvien') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const StaffScreen()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const MainScreen()),
-          );
-        }
       } else {
-        setState(() => _isHandlingScan = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Đăng nhập thất bại'),
-            backgroundColor: Colors.red,
-          ),
+        result = await AttendanceService.instance.checkOut(
+          method: 'QR',
+          qrToken: qrToken,
+          locationName: locationName,
+          notes: 'Quét mã QR địa điểm: $locationName',
         );
       }
+
+      if (!mounted) return;
+      Navigator.pop(context); // Tắt loading
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                result.success ? Icons.check_circle : Icons.error,
+                color: result.success ? Colors.green : Colors.red,
+              ),
+              const SizedBox(width: 8),
+              Text(result.success ? 'Chấm công thành công' : 'Chấm công thất bại'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(result.message, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Text('Mã địa điểm: $locationName'),
+              Text('Hình thức: Quét mã QR'),
+              const SizedBox(height: 8),
+              Text(
+                result.success
+                    ? '✅ Đã lưu bản ghi chấm công vào SQL Server (Mã 200 OK).'
+                    : '⚠️ Máy chủ từ chối ghi nhận chấm công. Chi tiết lỗi đã được báo cáo.',
+                style: TextStyle(
+                  color: result.success ? Colors.green[800] : Colors.red[800],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                setState(() => _isHandlingScan = false);
+              },
+              child: const Text('Đóng'),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
       setState(() => _isHandlingScan = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Lỗi hệ thống: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -417,62 +499,6 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
     );
   }
 
-  // Dialog Điểm danh từ QR
-  void _showCheckinQrDialog(String location) {
-    final now = DateTime.now();
-    final timeStr =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} ngày ${now.day}/${now.month}/${now.year}';
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.verified, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Điểm danh QR thành công!'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Hệ thống đã ghi nhận lượt điểm danh của bạn:'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('📍 Địa điểm: $location', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  Text('⏰ Thời gian: $timeStr', style: const TextStyle(color: Colors.black87)),
-                  const SizedBox(height: 6),
-                  const Text('✅ Trạng thái: Hợp lệ (Đúng vị trí)', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => _isHandlingScan = false);
-            },
-            child: const Text('Hoàn tất'),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Dialog hiển thị mã QR chung
   void _showGeneralQrDialog(String code) {
     showDialog<void>(
@@ -496,9 +522,18 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
               code,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
+            const SizedBox(height: 12),
+            const Text('Bạn có muốn dùng mã này để chấm công?'),
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _isHandlingScan = false);
+            },
+            child: const Text('Đóng'),
+          ),
           TextButton.icon(
             onPressed: () {
               Clipboard.setData(ClipboardData(text: code));
@@ -512,9 +547,9 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              setState(() => _isHandlingScan = false);
+              _showAttendanceQrDialog(code);
             },
-            child: const Text('Đóng'),
+            child: const Text('Chấm công bằng mã này'),
           ),
         ],
       ),
@@ -528,7 +563,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nhận diện QR, Vân tay & NFC'),
+        title: const Text('Nhận diện QR & Sinh trắc học'),
         backgroundColor: Colors.deepPurple[700],
         foregroundColor: Colors.white,
         bottom: TabBar(
@@ -560,7 +595,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                       controller: _scannerController,
                       onDetect: _onDetectBarcode,
                     ),
-                    // Khung ngắm quét (Reticle Scanner Frame)
+                    // Khung ngắm quét
                     Container(
                       width: 240,
                       height: 240,
@@ -605,7 +640,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
-                          'Hướng camera vào mã QR để nhận diện tự động',
+                          'Hướng camera vào mã QR địa điểm để chấm công',
                           style: TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ),
@@ -638,7 +673,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        'Thử nhanh các mã QR mẫu (Hữu ích khi chấm trên máy ảo):',
+                        'Mã QR điểm danh mẫu (Hữu ích khi chấm trên máy ảo):',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                       ),
                       const SizedBox(height: 8),
@@ -647,29 +682,24 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                         runSpacing: 6,
                         children: [
                           ActionChip(
-                            avatar: const Icon(Icons.admin_panel_settings, size: 16, color: Colors.red),
-                            label: const Text('QR Login Admin'),
-                            onPressed: () => _handleDetectedCode('LOGIN:admin:Admin@123456'),
+                            avatar: const Icon(Icons.location_city, size: 16, color: Colors.purple),
+                            label: const Text('Vào ca Khu E'),
+                            onPressed: () => _handleDetectedCode('CHECKIN:HUTECH_CAMPUS_E'),
                           ),
                           ActionChip(
-                            avatar: const Icon(Icons.badge, size: 16, color: Colors.teal),
-                            label: const Text('QR Login Staff'),
-                            onPressed: () => _handleDetectedCode('LOGIN:staff:Staff@123456'),
+                            avatar: const Icon(Icons.logout, size: 16, color: Colors.orange),
+                            label: const Text('Ra ca Khu E'),
+                            onPressed: () => _handleDetectedCode('CHECKOUT:HUTECH_CAMPUS_E'),
                           ),
                           ActionChip(
-                            avatar: const Icon(Icons.person, size: 16, color: Colors.blue),
-                            label: const Text('QR Login User'),
-                            onPressed: () => _handleDetectedCode('LOGIN:user:User@123456'),
+                            avatar: const Icon(Icons.business, size: 16, color: Colors.teal),
+                            label: const Text('Vào ca Trụ sở chính'),
+                            onPressed: () => _handleDetectedCode('CHECKIN:HUTECH_MAIN_CAMPUS'),
                           ),
                           ActionChip(
-                            avatar: const Icon(Icons.inventory_2, size: 16, color: Colors.purple),
+                            avatar: const Icon(Icons.inventory_2, size: 16, color: Colors.indigo),
                             label: const Text('QR Sản phẩm #1'),
                             onPressed: () => _handleDetectedCode('PRODUCT:1'),
-                          ),
-                          ActionChip(
-                            avatar: const Icon(Icons.location_on, size: 16, color: Colors.green),
-                            label: const Text('QR Điểm danh'),
-                            onPressed: () => _handleDetectedCode('CHECKIN:HUTECH_CAMPUS_E1_TPHCM'),
                           ),
                         ],
                       ),
@@ -690,7 +720,7 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
               children: [
                 const Center(
                   child: Text(
-                    'Tạo mã QR cho Hệ thống HUTECH',
+                    'Tạo mã QR Điểm danh & Địa điểm HUTECH',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -725,13 +755,13 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                   decoration: const InputDecoration(
                     labelText: 'Dữ liệu mã QR',
                     border: OutlineInputBorder(),
-                    hintText: 'Nhập chuỗi văn bản bất kỳ để tạo mã QR',
+                    hintText: 'Nhập chuỗi mã địa điểm hoặc token chấm công',
                   ),
                   onChanged: (val) => setState(() {}),
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Chọn mẫu nhanh để tạo QR:',
+                  'Chọn mẫu mã địa điểm chuẩn:',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
                 ),
                 const SizedBox(height: 8),
@@ -740,17 +770,24 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                   runSpacing: 6,
                   children: [
                     FilterChip(
-                      label: const Text('Admin QR'),
-                      selected: _qrDataController.text == 'LOGIN:admin:Admin@123456',
+                      label: const Text('Vào ca Campus Khu E'),
+                      selected: _qrDataController.text == 'CHECKIN:HUTECH_CAMPUS_E_2026',
                       onSelected: (_) => setState(() {
-                        _qrDataController.text = 'LOGIN:admin:Admin@123456';
+                        _qrDataController.text = 'CHECKIN:HUTECH_CAMPUS_E_2026';
                       }),
                     ),
                     FilterChip(
-                      label: const Text('Staff QR'),
-                      selected: _qrDataController.text == 'LOGIN:staff:Staff@123456',
+                      label: const Text('Ra ca Campus Khu E'),
+                      selected: _qrDataController.text == 'CHECKOUT:HUTECH_CAMPUS_E_2026',
                       onSelected: (_) => setState(() {
-                        _qrDataController.text = 'LOGIN:staff:Staff@123456';
+                        _qrDataController.text = 'CHECKOUT:HUTECH_CAMPUS_E_2026';
+                      }),
+                    ),
+                    FilterChip(
+                      label: const Text('Trụ sở Điện Biên Phủ'),
+                      selected: _qrDataController.text == 'CHECKIN:HUTECH_CAMPUS_A_DBP',
+                      onSelected: (_) => setState(() {
+                        _qrDataController.text = 'CHECKIN:HUTECH_CAMPUS_A_DBP';
                       }),
                     ),
                     FilterChip(
@@ -758,13 +795,6 @@ class _BiometricQrScreenState extends State<BiometricQrScreen>
                       selected: _qrDataController.text == 'PRODUCT:1',
                       onSelected: (_) => setState(() {
                         _qrDataController.text = 'PRODUCT:1';
-                      }),
-                    ),
-                    FilterChip(
-                      label: const Text('Điểm danh HUTECH'),
-                      selected: _qrDataController.text == 'CHECKIN:HUTECH_CAMPUS_E_2026',
-                      onSelected: (_) => setState(() {
-                        _qrDataController.text = 'CHECKIN:HUTECH_CAMPUS_E_2026';
                       }),
                     ),
                   ],

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -6,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using NgocTruong_2380602415.Api.Models;
+using NgocTruong_2380602415.Api.Services;
 
 namespace NgocTruong_2380602415.Api.Controllers;
 
@@ -21,18 +21,18 @@ public class AuthenticateController : ControllerBase
     private readonly UserManager<User> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IConfiguration _configuration;
-
-    // Lưu trữ OTP tạm thời trong bộ nhớ kèm thời hạn 5 phút
-    private static readonly ConcurrentDictionary<string, (string Code, DateTime Expiry)> _otpStore = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IOtpService _otpService;
 
     public AuthenticateController(
         UserManager<User> userManager,
         RoleManager<IdentityRole> roleManager,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IOtpService otpService)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _configuration = configuration;
+        _otpService = otpService;
     }
 
     [HttpPost("request-otp")]
@@ -50,16 +50,25 @@ public class AuthenticateController : ControllerBase
             return NotFound(new { Status = false, Message = "Không tìm thấy tài khoản với tên đăng nhập này." });
         }
 
-        // Sinh mã OTP 6 chữ số ngẫu nhiên
-        var otpCode = Random.Shared.Next(100000, 999999).ToString();
-        var expiry = DateTime.UtcNow.AddMinutes(5);
-        _otpStore[user.UserName!] = (otpCode, expiry);
+        var (canSend, errorMessage, cooldown) = _otpService.CheckCooldown(user.UserName!);
+        if (!canSend)
+        {
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                Status = false,
+                Message = errorMessage,
+                CooldownRemaining = cooldown
+            });
+        }
 
+        var email = string.IsNullOrWhiteSpace(user.Email) ? $"{user.UserName}@example.com" : user.Email;
+        await _otpService.GenerateAndSendOtpAsync(user.UserName!, email);
+
+        // KHÔNG trả mã OTP trong JSON response (chỉ trả message thông báo đã gửi)
         return Ok(new
         {
             Status = true,
-            Message = $"Mã OTP đã được gửi thành công: {otpCode}",
-            Otp = otpCode,
+            Message = "Mã xác thực OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.",
             ExpiresInSeconds = 300
         });
     }
@@ -69,6 +78,17 @@ public class AuthenticateController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
+
+        // Bỏ cho phép tự đăng ký vai trò Admin. Nếu client gửi Admin, bắt buộc từ chối
+        if (!string.IsNullOrWhiteSpace(model.Role) &&
+            string.Equals(model.Role.Trim(), "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                Status = false,
+                Message = "Không được phép tự đăng ký tài khoản với vai trò Admin."
+            });
+        }
 
         var userExists = await _userManager.FindByNameAsync(model.Username);
         if (userExists != null)
@@ -97,7 +117,8 @@ public class AuthenticateController : ControllerBase
             });
         }
 
-        var role = string.IsNullOrWhiteSpace(model.Role) ? "User" : model.Role.Trim();
+        // Chỉ cho phép đăng ký Staff hoặc User (mặc định là User)
+        var role = string.Equals(model.Role?.Trim(), "Staff", StringComparison.OrdinalIgnoreCase) ? "Staff" : "User";
         if (!await _roleManager.RoleExistsAsync(role))
         {
             await _roleManager.CreateAsync(new IdentityRole(role));
@@ -117,7 +138,10 @@ public class AuthenticateController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var user = await _userManager.FindByNameAsync(model.Username) ?? await _userManager.FindByEmailAsync(model.Username);
+        var identifier = model.Username.Trim();
+        var user = await _userManager.FindByNameAsync(identifier) ?? await _userManager.FindByEmailAsync(identifier);
+
+        // 1. Kiểm tra password trước
         if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
         {
             return Unauthorized(new
@@ -127,37 +151,33 @@ public class AuthenticateController : ControllerBase
             });
         }
 
-        // Kiểm tra OTP nếu người dùng gửi kèm mã OTP
-        if (!string.IsNullOrWhiteSpace(model.Otp))
+        // 2. Bắt buộc OTP cho luồng đăng nhập username/password: kiểm tra password trước, kiểm tra OTP sau
+        if (string.IsNullOrWhiteSpace(model.Otp))
         {
-            var otp = model.Otp.Trim();
-            var valid = false;
-
-            // Chấp nhận mã master test '123456' hoặc mã OTP đã sinh trong _otpStore
-            if (otp == "123456")
+            return BadRequest(new
             {
-                valid = true;
-            }
-            else if (_otpStore.TryGetValue(user.UserName!, out var stored) && stored.Expiry > DateTime.UtcNow && stored.Code == otp)
-            {
-                valid = true;
-                _otpStore.TryRemove(user.UserName!, out _);
-            }
-
-            if (!valid)
-            {
-                return BadRequest(new
-                {
-                    Status = false,
-                    Message = "Mã OTP không chính xác hoặc đã hết hạn (Thử dùng mã 123456 hoặc bấm Gửi OTP)."
-                });
-            }
+                Status = false,
+                Message = "Vui lòng nhập mã OTP xác thực đăng nhập."
+            });
         }
 
+        // 3. Kiểm tra OTP: ExpirationTime, AttemptsCount, Single-use
+        var (isValid, otpError) = _otpService.ValidateOtp(user.UserName!, model.Otp.Trim());
+        if (!isValid)
+        {
+            return BadRequest(new
+            {
+                Status = false,
+                Message = otpError
+            });
+        }
+
+        // Cấp JWT chỉ khi cả hai hợp lệ
         var userRoles = await _userManager.GetRolesAsync(user);
 
         var authClaims = new List<Claim>
         {
+            new Claim(ClaimTypes.NameIdentifier, user.Id),
             new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
             new Claim(JwtRegisteredClaimNames.Sub, user.UserName ?? string.Empty),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())

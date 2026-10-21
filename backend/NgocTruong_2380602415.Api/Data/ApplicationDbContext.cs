@@ -11,6 +11,7 @@ public class ApplicationDbContext : IdentityDbContext<User>
     public DbSet<Product> Products { get; set; } = null!;
     public DbSet<Post> Posts { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
+    public DbSet<AttendanceRecord> AttendanceRecords { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -43,6 +44,22 @@ public class ApplicationDbContext : IdentityDbContext<User>
             entity.ToTable("Posts", "dbo");
             entity.Property(post => post.Title).HasMaxLength(200).IsRequired();
             entity.Property(post => post.Body).HasMaxLength(5000).IsRequired();
+        });
+
+        builder.Entity<AttendanceRecord>(entity =>
+        {
+            entity.ToTable("AttendanceRecords", "dbo");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.UserId).IsRequired();
+            entity.Property(a => a.Method).HasMaxLength(50).IsRequired();
+            entity.Property(a => a.LocationName).HasMaxLength(255);
+            entity.Property(a => a.DeviceInfo).HasMaxLength(255);
+            entity.Property(a => a.Status).HasMaxLength(50).IsRequired();
+            entity.Property(a => a.Notes).HasMaxLength(1000);
+            entity.HasOne(a => a.User)
+                  .WithMany()
+                  .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

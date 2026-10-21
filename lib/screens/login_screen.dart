@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,36 +21,48 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
+
   bool _isLoading = false;
   bool _isSendingOtp = false;
   bool _obscurePassword = true;
 
+  int _otpCooldown = 0;
+  Timer? _cooldownTimer;
+
   @override
   void initState() {
     super.initState();
-    _checkToken(); // Kiểm tra token tự động đăng nhập khi mở app
+    _checkToken(); // Tự động kiểm tra phiên và điều hướng nếu token còn hạn
   }
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
     _usernameController.dispose();
     _passwordController.dispose();
     _otpController.dispose();
     super.dispose();
   }
 
-  // Khắc phục triệt để lỗi phân quyền: Admin -> AdminScreen, Staff -> StaffScreen, User -> MainScreen
+  /// Khắc phục triệt để và duy trì phiên: Tự động đăng nhập khi token còn hạn
+  /// Giải mã vai trò qua jwt_decoder và phân luồng chính xác: Admin, Staff, User
   Future<void> _checkToken() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       if (token != null && token.isNotEmpty) {
-        // Kiểm tra xem token còn hạn sử dụng hay không
-        if (!JwtDecoder.isExpired(token)) {
+        bool isExpired = true;
+        try {
+          isExpired = JwtDecoder.isExpired(token);
+        } catch (_) {
+          isExpired = true;
+        }
+
+        if (!isExpired) {
           // Lấy vai trò (Role) từ SharedPreferences hoặc giải mã trực tiếp từ JWT
           String? role = prefs.getString('user_role');
-          if (role == null || role.isEmpty) {
+          try {
             final decoded = JwtDecoder.decode(token);
             final dynamic rawRole = decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
                 decoded['role'] ??
@@ -59,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
             } else if (rawRole != null) {
               role = rawRole.toString();
             }
-          }
+          } catch (_) {}
 
           if (!mounted) return;
 
@@ -81,17 +94,44 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
         } else {
-          // Token đã hết hạn -> tiến hành dọn dẹp bộ nhớ
+          // Token đã hết hạn -> tiến hành dọn dẹp sạch sẽ bộ nhớ
           await Auth.logout();
         }
       }
     } catch (e) {
       debugPrint('Lỗi kiểm tra token tự động đăng nhập: $e');
+      await Auth.logout();
     }
   }
 
-  // Gửi hoặc lấy mã OTP
+  /// Bắt đầu bộ đếm thời gian Cooldown 60s cho nút gửi OTP
+  void _startOtpCooldown(int seconds) {
+    _cooldownTimer?.cancel();
+    setState(() {
+      _otpCooldown = seconds;
+    });
+
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_otpCooldown > 1) {
+          _otpCooldown--;
+        } else {
+          _otpCooldown = 0;
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  /// Gửi yêu cầu mã OTP tới email đã đăng ký
+  /// Bắt buộc KHÔNG tự động điền mã OTP và kích hoạt Cooldown 60 giây
   Future<void> _handleRequestOtp() async {
+    if (_otpCooldown > 0) return;
+
     final username = _usernameController.text.trim();
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -104,23 +144,51 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isSendingOtp = true);
-    final result = await Auth.requestOtp(username);
-    if (!mounted) return;
-    setState(() => _isSendingOtp = false);
 
-    final otp = result['otp']?.toString() ?? '123456';
-    _otpController.text = otp;
+    try {
+      final result = await Auth.requestOtp(username);
+      if (!mounted) return;
+      setState(() => _isSendingOtp = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Mã OTP của bạn: $otp (Đã tự động điền)'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+      if (result['success'] == true) {
+        // Kích hoạt bộ đếm thời gian 60 giây
+        _startOtpCooldown(60);
+
+        // Xóa trường nhập OTP để người dùng tự nhập mã gửi về email
+        _otpController.clear();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['message'] ?? 'Mã xác thực OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        final errorMsg = result['message'] ?? 'Không thể gửi mã OTP. Vui lòng kiểm tra lại tên tài khoản.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSendingOtp = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi kết nối khi gửi OTP: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
-  // Xử lý khi nhấn nút Đăng nhập
+  /// Xử lý Đăng nhập bắt buộc mã OTP nhận được qua email
   Future<void> _handleLogin() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
@@ -136,6 +204,17 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Bắt buộc người dùng phải nhập mã OTP nhận được qua email mới được đăng nhập
+    if (otp.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập mã OTP được gửi về email để xác thực đăng nhập'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -144,7 +223,6 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
 
       if (result['success'] == true) {
-        // Lấy vai trò người dùng sau khi giải mã token thành công
         final String role = (result['role'] ?? 'User').toString();
         final normalized = role.toLowerCase();
 
@@ -166,11 +244,13 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        final errorMessage = result['message'] ?? 'Tên đăng nhập hoặc mật khẩu không đúng';
+        // Thông báo lỗi rõ ràng từ server (ví dụ: OTP sai, hết hạn, hoặc mật khẩu không đúng)
+        final errorMessage = result['message'] ?? 'Tên đăng nhập, mật khẩu hoặc mã OTP không chính xác';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -179,7 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi kết nối: $e'),
+          content: Text('Lỗi kết nối khi đăng nhập: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -261,7 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // 3. Trường nhập mã OTP (Xác thực 2 lớp)
+                // 3. Trường nhập mã OTP (Xác thực 2 lớp) + Nút gửi OTP kèm Cooldown 60s
                 Row(
                   children: [
                     Expanded(
@@ -269,7 +349,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _otpController,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          hintText: 'Mã xác thực OTP (VD: 123456)',
+                          hintText: 'Mã xác thực OTP (từ email)',
                           prefixIcon: const Icon(Icons.security_rounded),
                           filled: true,
                           fillColor: Colors.grey[100],
@@ -288,10 +368,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(
                       height: 52,
                       child: OutlinedButton(
-                        onPressed: _isSendingOtp ? null : _handleRequestOtp,
+                        onPressed: (_isSendingOtp || _otpCooldown > 0)
+                            ? null
+                            : _handleRequestOtp,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.blue[700],
-                          side: BorderSide(color: Colors.blue[700]!),
+                          disabledForegroundColor: Colors.grey[600],
+                          side: BorderSide(
+                            color: _otpCooldown > 0 ? Colors.grey[350]! : Colors.blue[700]!,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -302,7 +387,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                 height: 16,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('Gửi OTP'),
+                            : Text(
+                                _otpCooldown > 0 ? '${_otpCooldown}s' : 'Gửi OTP',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _otpCooldown > 0 ? Colors.grey[600] : Colors.blue[700],
+                                ),
+                              ),
                       ),
                     ),
                   ],
