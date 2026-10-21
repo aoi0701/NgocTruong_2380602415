@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/attendance_service.dart';
+import '../widgets/post_shift_feedback_dialog.dart';
 
 class LocationShareScreen extends StatefulWidget {
   const LocationShareScreen({super.key});
@@ -323,6 +324,17 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
           ],
         ),
       );
+
+      // Nếu là ca Check-out thành công, gọi chung hộp thoại khảo sát cảm nhận sau ca làm
+      if (!isCheckIn && result.success && mounted) {
+        final recordId = int.tryParse(result.data?.id?.toString() ?? '');
+        if (recordId != null) {
+          await showPostShiftFeedbackDialog(
+            context: context,
+            recordId: recordId,
+          );
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);

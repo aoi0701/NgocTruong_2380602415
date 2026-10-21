@@ -117,15 +117,15 @@ public class AttendanceController : ControllerBase
                 });
             }
 
-            // BẢO MẬT & XÁC THỰC METHOD: Chỉ chấp nhận ["GPS", "QR", "Face", "Biometric"]
-            var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GPS", "QR", "Face", "Biometric" };
+            // BẢO MẬT & XÁC THỰC METHOD: Chỉ chấp nhận ["GPS", "QR", "Face", "Biometric", "Dashboard"]
+            var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GPS", "QR", "Face", "Biometric", "Dashboard" };
             var rawMethod = string.IsNullOrWhiteSpace(request?.Method) ? "GPS" : request.Method.Trim();
             if (!validMethods.Contains(rawMethod))
             {
                 return BadRequest(new
                 {
                     status = false,
-                    message = $"Phương thức chấm công '{request?.Method}' không hợp lệ. Chỉ chấp nhận GPS, QR, Face, Biometric."
+                    message = $"Phương thức chấm công '{request?.Method}' không hợp lệ. Chỉ chấp nhận GPS, QR, Face, Biometric, Dashboard."
                 });
             }
 
@@ -135,6 +135,7 @@ public class AttendanceController : ControllerBase
                 "QR" => "QR",
                 "FACE" => "Face",
                 "BIOMETRIC" => "Biometric",
+                "DASHBOARD" => "Dashboard",
                 _ => rawMethod
             };
 
@@ -268,13 +269,13 @@ public class AttendanceController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(request?.Method))
         {
-            var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GPS", "QR", "Face", "Biometric" };
+            var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GPS", "QR", "Face", "Biometric", "Dashboard" };
             if (!validMethods.Contains(request.Method.Trim()))
             {
                 return BadRequest(new
                 {
                     status = false,
-                    message = $"Phương thức chấm công '{request.Method}' không hợp lệ. Chỉ chấp nhận GPS, QR, Face, Biometric."
+                    message = $"Phương thức chấm công '{request.Method}' không hợp lệ. Chỉ chấp nhận GPS, QR, Face, Biometric, Dashboard."
                 });
             }
         }

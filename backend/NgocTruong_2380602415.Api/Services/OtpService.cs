@@ -137,4 +137,13 @@ public class OtpService : IOtpService
         }
         return null;
     }
+
+    public void ResetCooldownForTesting(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return;
+        lock (_validateLock)
+        {
+            _otpStore.TryRemove(username.Trim(), out _);
+        }
+    }
 }

@@ -205,6 +205,32 @@ public class AttendanceAndOtpUnitTests
     }
 
     [Fact]
+    public async Task Attendance_dashboard_method_is_accepted_for_checkin_and_checkout()
+    {
+        using var database = new TestDatabase();
+        using var app = database.Open();
+        using var staffClient = await app.CreateAuthenticatedClientAsync("staff", "Staff@123456");
+
+        var checkInRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-in", new
+        {
+            method = "DASHBOARD",
+            notes = "Chấm công trực tiếp từ Dashboard ứng dụng"
+        });
+        Assert.Equal(HttpStatusCode.OK, checkInRes.StatusCode);
+        var checkInData = JsonSerializer.Deserialize<JsonElement>(await checkInRes.Content.ReadAsStringAsync());
+        Assert.Equal("Dashboard", checkInData.GetProperty("data").GetProperty("method").GetString());
+
+        var checkOutRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-out", new
+        {
+            method = "DASHBOARD",
+            notes = "Ra ca trực tiếp từ Dashboard"
+        });
+        Assert.Equal(HttpStatusCode.OK, checkOutRes.StatusCode);
+        var checkOutData = JsonSerializer.Deserialize<JsonElement>(await checkOutRes.Content.ReadAsStringAsync());
+        Assert.NotNull(checkOutData.GetProperty("data").GetProperty("checkOutTime").GetString());
+    }
+
+    [Fact]
     public async Task Attendance_qr_method_validation_and_admin_generation()
     {
         using var database = new TestDatabase();
@@ -484,5 +510,57 @@ public class AttendanceAndOtpUnitTests
         var firstRecord = historyList[0];
         Assert.Equal("😓 Mệt", firstRecord.GetProperty("feedbackMood").GetString());
         Assert.Equal("Hôm nay đông khách", firstRecord.GetProperty("feedbackNote").GetString());
+    }
+
+    [Fact]
+    public async Task Attendance_dashboard_checkout_and_submit_feedback_flow_persists_across_restart()
+    {
+        using var database = new TestDatabase();
+        int recordId;
+
+        // Phiên 1: Vào ca -> Ra ca qua DASHBOARD -> Gửi cảm nhận "😓 Mệt"
+        using (var app = database.Open())
+        using (var staffClient = await app.CreateAuthenticatedClientAsync("staff", "Staff@123456"))
+        {
+            var checkInRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-in", new
+            {
+                method = "DASHBOARD",
+                notes = "Chấm công vào ca từ Dashboard"
+            });
+            Assert.Equal(HttpStatusCode.OK, checkInRes.StatusCode);
+            var checkInData = JsonSerializer.Deserialize<JsonElement>(await checkInRes.Content.ReadAsStringAsync());
+            recordId = checkInData.GetProperty("data").GetProperty("id").GetInt32();
+
+            var checkOutRes = await staffClient.PostAsJsonAsync("/api/Attendance/check-out", new
+            {
+                method = "DASHBOARD",
+                notes = "Chấm công ra ca từ Dashboard"
+            });
+            Assert.Equal(HttpStatusCode.OK, checkOutRes.StatusCode);
+
+            var feedbackRes = await staffClient.PostAsJsonAsync($"/api/Attendance/{recordId}/feedback", new
+            {
+                mood = "😓 Mệt",
+                notes = "Hôm nay đông khách"
+            });
+            Assert.Equal(HttpStatusCode.OK, feedbackRes.StatusCode);
+        }
+
+        // Phiên 2: Đóng app và mở lại (tạo client mới trên cùng database) -> Dữ liệu phản hồi vẫn còn nguyên
+        using (var app = database.Open())
+        using (var staffClient = await app.CreateAuthenticatedClientAsync("staff", "Staff@123456"))
+        {
+            var historyRes = await staffClient.GetAsync("/api/Attendance/my-history");
+            Assert.Equal(HttpStatusCode.OK, historyRes.StatusCode);
+            var historyList = JsonSerializer.Deserialize<JsonElement>(await historyRes.Content.ReadAsStringAsync());
+            Assert.True(historyList.GetArrayLength() > 0);
+
+            var record = historyList[0];
+            Assert.Equal(recordId, record.GetProperty("id").GetInt32());
+            Assert.Equal("Dashboard", record.GetProperty("method").GetString());
+            Assert.Equal("😓 Mệt", record.GetProperty("feedbackMood").GetString());
+            Assert.Equal("Hôm nay đông khách", record.GetProperty("feedbackNote").GetString());
+            Assert.NotNull(record.GetProperty("feedbackTime").GetString());
+        }
     }
 }

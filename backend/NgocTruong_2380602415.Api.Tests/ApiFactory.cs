@@ -70,18 +70,29 @@ internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Pr
         });
     }
 
+    private static readonly SemaphoreSlim _authLock = new(1, 1);
+
     public async Task<HttpClient> CreateAuthenticatedClientAsync(string username = "admin", string password = "Admin@123456")
     {
-        var client = CreateClient();
-        await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username });
-        var otpService = Services.GetRequiredService<IOtpService>();
-        var otp = otpService.GetActiveOtpForTesting(username);
-        var response = await client.PostAsJsonAsync("/api/Authenticate/login", new { username, password, otp });
-        response.EnsureSuccessStatusCode();
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var token = json.GetProperty("token").GetString();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
+        await _authLock.WaitAsync();
+        try
+        {
+            var client = CreateClient();
+            var otpService = Services.GetRequiredService<IOtpService>();
+            otpService.ResetCooldownForTesting(username);
+            var reqOtpRes = await client.PostAsJsonAsync("/api/Authenticate/request-otp", new { username });
+            var otp = otpService.GetActiveOtpForTesting(username);
+            var response = await client.PostAsJsonAsync("/api/Authenticate/login", new { username, password, otp });
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var token = json.GetProperty("token").GetString();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return client;
+        }
+        finally
+        {
+            _authLock.Release();
+        }
     }
 }
 
