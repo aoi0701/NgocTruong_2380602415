@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:Nhom_3_nguoi/config/config_url.dart';
-import 'package:Nhom_3_nguoi/services/api_client.dart';
-import 'package:Nhom_3_nguoi/utils/auth.dart';
-import 'package:Nhom_3_nguoi/screens/login_screen.dart';
-import 'package:Nhom_3_nguoi/screens/registration_screen.dart';
-import 'package:Nhom_3_nguoi/screens/admin_screen.dart';
-import 'package:Nhom_3_nguoi/screens/staff_screen.dart';
-import 'package:Nhom_3_nguoi/screens/main_screen.dart';
+import 'package:ngoc_truong_2380602415/config/config_url.dart';
+import 'package:ngoc_truong_2380602415/services/api_client.dart';
+import 'package:ngoc_truong_2380602415/utils/auth.dart';
+import 'package:ngoc_truong_2380602415/screens/login_screen.dart';
+import 'package:ngoc_truong_2380602415/screens/registration_screen.dart';
+import 'package:ngoc_truong_2380602415/screens/admin_screen.dart';
+import 'package:ngoc_truong_2380602415/screens/staff_screen.dart';
+import 'package:ngoc_truong_2380602415/screens/main_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

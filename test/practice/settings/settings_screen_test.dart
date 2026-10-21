@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Nhom_3_nguoi/practice/features/settings/preferences_store.dart';
-import 'package:Nhom_3_nguoi/practice/features/settings/settings_provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/settings/settings_screen.dart';
+import 'package:ngoc_truong_2380602415/practice/features/settings/preferences_store.dart';
+import 'package:ngoc_truong_2380602415/practice/features/settings/settings_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';

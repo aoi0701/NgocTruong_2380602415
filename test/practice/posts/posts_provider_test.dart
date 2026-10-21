@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:Nhom_3_nguoi/practice/features/posts/post_api.dart';
-import 'package:Nhom_3_nguoi/practice/features/posts/posts_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/posts/post_api.dart';
+import 'package:ngoc_truong_2380602415/practice/features/posts/posts_provider.dart';
 
 const endpoint = 'https://example.com/posts';
 const payload =

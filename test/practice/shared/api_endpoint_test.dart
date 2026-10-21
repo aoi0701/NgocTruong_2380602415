@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Nhom_3_nguoi/practice/features/settings/endpoint_validation.dart';
-import 'package:Nhom_3_nguoi/practice/features/shared/api_endpoint.dart';
+import 'package:ngoc_truong_2380602415/practice/features/settings/endpoint_validation.dart';
+import 'package:ngoc_truong_2380602415/practice/features/shared/api_endpoint.dart';
 
 void main() {
   test(

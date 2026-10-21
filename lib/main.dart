@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'HomeScreen.dart';
+import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,10 +20,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ứng dụng chuyển đổi',
+      title: 'App Chấm Công Nhân Viên - NgocTruong_2380602415',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const HomeScreen(),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+      ),
+      home: const LoginScreen(),
     );
   }
 }

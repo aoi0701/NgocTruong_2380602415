@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Nhom_3_nguoi/practice/features/notes/notes_provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/notes/notes_repository.dart';
-import 'package:Nhom_3_nguoi/practice/features/notes/notes_screen.dart';
+import 'package:ngoc_truong_2380602415/practice/features/notes/notes_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/notes/notes_repository.dart';
+import 'package:ngoc_truong_2380602415/practice/features/notes/notes_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

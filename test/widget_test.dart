@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:Nhom_3_nguoi/UnitConverterScreen.dart';
+import 'package:ngoc_truong_2380602415/UnitConverterScreen.dart';
 
 void main() {
   testWidgets('UnitConverterScreen smoke test', (WidgetTester tester) async {

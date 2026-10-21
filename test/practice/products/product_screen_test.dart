@@ -6,9 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/products/product_api.dart';
-import 'package:Nhom_3_nguoi/practice/features/products/product_provider.dart';
-import 'package:Nhom_3_nguoi/practice/features/products/product_screen.dart';
+import 'package:ngoc_truong_2380602415/practice/features/products/product_api.dart';
+import 'package:ngoc_truong_2380602415/practice/features/products/product_provider.dart';
+import 'package:ngoc_truong_2380602415/practice/features/products/product_screen.dart';
 
 import 'product_api_test.dart' show endpoint, fixture, jsonResponse;
 

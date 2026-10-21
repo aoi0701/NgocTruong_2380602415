@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:Nhom_3_nguoi/practice/features/posts/post.dart';
+import 'package:ngoc_truong_2380602415/practice/features/posts/post.dart';
 
 void main() {
   const valid = <String, dynamic>{

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:Nhom_3_nguoi/practice/features/posts/post_api.dart';
+import 'package:ngoc_truong_2380602415/practice/features/posts/post_api.dart';
 
 void main() {
   const endpoint = 'https://example.com/posts?page=2';
