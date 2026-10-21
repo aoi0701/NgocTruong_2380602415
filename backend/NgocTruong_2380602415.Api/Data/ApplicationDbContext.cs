@@ -1,0 +1,48 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using NgocTruong_2380602415.Api.Models;
+
+namespace NgocTruong_2380602415.Api.Data;
+
+public class ApplicationDbContext : IdentityDbContext<User>
+{
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+
+    public DbSet<Product> Products { get; set; } = null!;
+    public DbSet<Post> Posts { get; set; } = null!;
+    public DbSet<Category> Categories { get; set; } = null!;
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+
+        builder.HasDefaultSchema("identity");
+        builder.Entity<User>().Property(u => u.Initials).HasMaxLength(5);
+
+        builder.Entity<Product>(entity =>
+        {
+            entity.ToTable("Products", "dbo");
+            entity.Property(product => product.Name).HasMaxLength(200);
+            entity.Property(product => product.Description).HasMaxLength(2000);
+            entity.Property(product => product.Price).HasPrecision(38, 9);
+            entity.HasOne(product => product.Category)
+                  .WithMany()
+                  .HasForeignKey(product => product.CategoryId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<Category>(entity =>
+        {
+            entity.ToTable("Categories", "dbo");
+            entity.Property(category => category.Name).HasMaxLength(200).IsRequired();
+            entity.Property(category => category.Description).HasMaxLength(2000);
+        });
+
+        builder.Entity<Post>(entity =>
+        {
+            entity.ToTable("Posts", "dbo");
+            entity.Property(post => post.Title).HasMaxLength(200).IsRequired();
+            entity.Property(post => post.Body).HasMaxLength(5000).IsRequired();
+        });
+    }
+}

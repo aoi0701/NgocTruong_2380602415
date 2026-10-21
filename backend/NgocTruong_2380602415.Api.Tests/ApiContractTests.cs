@@ -6,6 +6,11 @@ namespace NgocTruong_2380602415.Api.Tests;
 
 public sealed class ApiContractTests
 {
+    private static async Task<HttpClient> GetClient(ApiFactory app, string? resource = null)
+    {
+        return resource == "products" ? await app.CreateAuthenticatedClientAsync() : app.CreateClient();
+    }
+
     [Theory]
     [InlineData("posts")]
     [InlineData("products")]
@@ -14,7 +19,7 @@ public sealed class ApiContractTests
         using var database = new TestDatabase();
         int id;
         using (var app = database.Open())
-        using (var client = app.CreateClient())
+        using (var client = await GetClient(app, resource))
         {
             var created = await client.PostAsJsonAsync($"/api/{resource}", Input(resource, false));
             Assert.Equal(HttpStatusCode.Created, created.StatusCode);
@@ -32,7 +37,7 @@ public sealed class ApiContractTests
             Assert.Equal(id, (await Read(updated)).GetProperty("id").GetInt32());
         }
         using (var app = database.Open())
-        using (var client = app.CreateClient())
+        using (var client = await GetClient(app, resource))
         {
             var stored = await Read(await client.GetAsync($"/api/{resource}/{id}"));
             Assert.Equal(resource == "posts" ? "Đã sửa" : "Trà xanh", stored.GetProperty(resource == "posts" ? "title" : "name").GetString());
@@ -45,7 +50,7 @@ public sealed class ApiContractTests
             Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/{resource}/{id}")).StatusCode);
         }
         using (var app = database.Open())
-        using (var client = app.CreateClient())
+        using (var client = await GetClient(app, resource))
             Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/{resource}/{id}")).StatusCode);
     }
 
@@ -56,7 +61,7 @@ public sealed class ApiContractTests
     {
         using var database = new TestDatabase();
         using var app = database.Open();
-        using var client = app.CreateClient();
+        using var client = await GetClient(app, resource);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/{resource}/999999")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PutAsJsonAsync($"/api/{resource}/999999", Input(resource, false))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync($"/api/{resource}/999999")).StatusCode);
@@ -83,7 +88,7 @@ public sealed class ApiContractTests
     {
         using var database = new TestDatabase();
         using var app = database.Open();
-        using var client = app.CreateClient();
+        using var client = await GetClient(app, resource);
         var before = await Read(await client.GetAsync($"/api/{resource}"));
         var id = before[0].GetProperty("id").GetInt32();
         foreach (var response in new[] {
@@ -105,7 +110,7 @@ public sealed class ApiContractTests
     {
         using var database = new TestDatabase();
         using var app = database.Open();
-        using var client = app.CreateClient();
+        using var client = await GetClient(app, resource);
         const string text = "Đặc biệt ' OR 1=1; DROP TABLE Products; -- 100%_[x]";
         object input = resource == "posts" ? new { userId = 1, title = text, body = "Nội dung" } : new { name = text, description = "", price = 0 };
         var created = await client.PostAsJsonAsync($"/api/{resource}", input);
@@ -128,18 +133,24 @@ public sealed class ApiContractTests
     {
         using var database = new TestDatabase();
         using (var app = database.Open())
-        using (var client = app.CreateClient())
+        {
             foreach (var resource in new[] { "posts", "products" })
             {
+                using var client = await GetClient(app, resource);
                 var items = await Read(await client.GetAsync($"/api/{resource}"));
                 Assert.True(items.GetArrayLength() > 0);
                 foreach (var item in items.EnumerateArray())
                     Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/{resource}/{item.GetProperty("id").GetInt32()}")).StatusCode);
             }
+        }
         using (var app = database.Open())
-        using (var client = app.CreateClient())
+        {
             foreach (var resource in new[] { "posts", "products" })
+            {
+                using var client = await GetClient(app, resource);
                 Assert.Equal(0, (await Read(await client.GetAsync($"/api/{resource}"))).GetArrayLength());
+            }
+        }
     }
 
     [Fact]
@@ -157,6 +168,154 @@ public sealed class ApiContractTests
             Assert.True(paths.GetProperty($"/api/{resource}").TryGetProperty("post", out _));
             foreach (var method in new[] { "get", "put", "delete" })
                 Assert.True(paths.GetProperty($"/api/{resource}/{{id}}").TryGetProperty(method, out _));
+        }
+    }
+
+    [Fact]
+    public async Task Authenticate_register_login_and_roles_work()
+    {
+        using var database = new TestDatabase();
+        using var app = database.Open();
+        using var client = app.CreateClient();
+
+        // Register new user
+        var regResponse = await client.PostAsJsonAsync("/api/Authenticate/register", new
+        {
+            username = "teststudent",
+            email = "student@example.com",
+            password = "Student@123456",
+            initials = "STU",
+            role = "User"
+        });
+        var regBody = await regResponse.Content.ReadAsStringAsync();
+        Assert.True(regResponse.IsSuccessStatusCode, $"Register failed: {regBody}");
+
+        // Duplicate registration returns 400
+        var dupResponse = await client.PostAsJsonAsync("/api/Authenticate/register", new
+        {
+            username = "teststudent",
+            email = "student2@example.com",
+            password = "Student@123456",
+            initials = "STU",
+            role = "User"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, dupResponse.StatusCode);
+
+        // Login with valid credentials
+        var loginResponse = await client.PostAsJsonAsync("/api/Authenticate/login", new
+        {
+            username = "teststudent",
+            password = "Student@123456"
+        });
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+        var loginBody = await Read(loginResponse);
+        Assert.True(loginBody.GetProperty("status").GetBoolean());
+        var token = loginBody.GetProperty("token").GetString();
+        Assert.NotNull(token);
+        Assert.NotEmpty(token!);
+        Assert.Equal("User", loginBody.GetProperty("role").GetString());
+
+        // Login with wrong password returns 401
+        var wrongPass = await client.PostAsJsonAsync("/api/Authenticate/login", new
+        {
+            username = "teststudent",
+            password = "WrongPassword123"
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongPass.StatusCode);
+    }
+
+    [Fact]
+    public async Task Categories_crud_authorization_and_product_setnull_work()
+    {
+        using var database = new TestDatabase();
+        using var app = database.Open();
+
+        // 1. Unauthenticated cannot POST category
+        using (var anonClient = app.CreateClient())
+        {
+            var res = await anonClient.PostAsJsonAsync("/api/Categories", new { name = "Hàng mới" });
+            Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
+        }
+
+        // 2. Regular User (role = User) cannot POST category (Forbidden)
+        using (var userClient = await app.CreateAuthenticatedClientAsync("user", "User@123456"))
+        {
+            var res = await userClient.PostAsJsonAsync("/api/Categories", new { name = "Hàng mới" });
+            Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        }
+
+        // 3. Admin can CRUD category
+        using (var adminClient = await app.CreateAuthenticatedClientAsync("admin", "Admin@123456"))
+        {
+            // Create Category
+            var createRes = await adminClient.PostAsJsonAsync("/api/Categories", new
+            {
+                name = "Văn phòng phẩm",
+                description = "Bút thước vở"
+            });
+            Assert.Equal(HttpStatusCode.Created, createRes.StatusCode);
+            var cat = await Read(createRes);
+            var catId = cat.GetProperty("id").GetInt32();
+            Assert.True(catId > 0);
+
+            // Create Product belonging to this category
+            var prodRes = await adminClient.PostAsJsonAsync("/api/ProductApi", new
+            {
+                name = "Bút bi",
+                price = 5000m,
+                description = "Bút bi xanh",
+                categoryId = catId
+            });
+            Assert.Equal(HttpStatusCode.Created, prodRes.StatusCode);
+            var prod = await Read(prodRes);
+            var prodId = prod.GetProperty("id").GetInt32();
+            Assert.Equal(catId, prod.GetProperty("categoryId").GetInt32());
+
+            // Delete Category
+            var deleteRes = await adminClient.DeleteAsync($"/api/Categories/{catId}");
+            Assert.Equal(HttpStatusCode.NoContent, deleteRes.StatusCode);
+
+            // Verify category is deleted
+            var getCatRes = await adminClient.GetAsync($"/api/Categories/{catId}");
+            Assert.Equal(HttpStatusCode.NotFound, getCatRes.StatusCode);
+
+            // QUAN TRỌNG: Verify Product STILL EXISTS and CategoryId became null!
+            var getProdRes = await adminClient.GetAsync($"/api/ProductApi/{prodId}");
+            Assert.Equal(HttpStatusCode.OK, getProdRes.StatusCode);
+            var updatedProd = await Read(getProdRes);
+            Assert.True(updatedProd.GetProperty("categoryId").ValueKind == JsonValueKind.Null);
+            Assert.Equal("Bút bi", updatedProd.GetProperty("name").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task ProductApi_requires_authorization_and_supports_both_routes()
+    {
+        using var database = new TestDatabase();
+        using var app = database.Open();
+
+        // Anonymous call to /api/ProductApi is 401 Unauthorized
+        using (var anonClient = app.CreateClient())
+        {
+            var anonRes = await anonClient.GetAsync("/api/ProductApi");
+            Assert.Equal(HttpStatusCode.Unauthorized, anonRes.StatusCode);
+
+            var anonProductsRes = await anonClient.GetAsync("/api/products");
+            Assert.Equal(HttpStatusCode.Unauthorized, anonProductsRes.StatusCode);
+        }
+
+        // Authenticated call to /api/ProductApi and /api/products returns 200 OK
+        using (var userClient = await app.CreateAuthenticatedClientAsync("user", "User@123456"))
+        {
+            var res1 = await userClient.GetAsync("/api/ProductApi");
+            Assert.Equal(HttpStatusCode.OK, res1.StatusCode);
+            var list1 = await Read(res1);
+            Assert.True(list1.GetArrayLength() > 0);
+
+            var res2 = await userClient.GetAsync("/api/products");
+            Assert.Equal(HttpStatusCode.OK, res2.StatusCode);
+            var list2 = await Read(res2);
+            Assert.True(list2.GetArrayLength() > 0);
         }
     }
 

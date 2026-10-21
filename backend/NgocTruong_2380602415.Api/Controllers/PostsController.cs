@@ -8,7 +8,7 @@ namespace NgocTruong_2380602415.Api.Controllers;
 
 [ApiController]
 [Route("api/posts")]
-public sealed class PostsController(PracticeDbContext db) : ControllerBase
+public sealed class PostsController(ApplicationDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<Post>>> GetAll([FromQuery] string? search, CancellationToken cancellationToken)
