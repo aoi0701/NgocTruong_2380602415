@@ -33,6 +33,14 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# ASP.NET Core backend generated output
+**/.vs/
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+*.suo
+
 # Symbolication related
 app.*.symbols
 
