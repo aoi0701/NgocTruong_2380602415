@@ -13,8 +13,11 @@ import 'features/products/product_provider.dart';
 import 'features/settings/favorites_provider.dart';
 import 'features/settings/preferences_store.dart';
 import 'features/settings/settings_provider.dart';
+import '../screens/login_screen.dart';
+import '../screens/market_screen.dart';
+import '../screens/feed_screen.dart';
 
-/// Màn hình luyện tập trong ứng dụng hiện tại; không tạo ứng dụng/entrypoint mới.
+/// Màn hình trung tâm chọn bài thực hành Tuần 6 & Tuần 7.
 class PracticeEntry extends StatefulWidget {
   const PracticeEntry({super.key});
   @override
@@ -23,6 +26,7 @@ class PracticeEntry extends StatefulWidget {
 
 class _PracticeEntryState extends State<PracticeEntry> {
   late Future<SharedPreferences> _preferences;
+
   @override
   void initState() {
     super.initState();
@@ -38,7 +42,7 @@ class _PracticeEntryState extends State<PracticeEntry> {
     future: _preferences,
     builder: (context, snapshot) {
       if (snapshot.hasData) {
-        return _ReadyApp(
+        return _PracticeHubScreen(
           preferences: snapshot.requireData,
           onExit: () => Navigator.of(context).pop(),
         );
@@ -71,6 +75,173 @@ class _PracticeEntryState extends State<PracticeEntry> {
       );
     },
   );
+}
+
+class _PracticeHubScreen extends StatelessWidget {
+  const _PracticeHubScreen({required this.preferences, required this.onExit});
+  final SharedPreferences preferences;
+  final VoidCallback onExit;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+      ),
+      home: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Về ứng dụng chính',
+            onPressed: onExit,
+          ),
+          title: const Text(
+            'Thực hành Bài 6 & Bài 7',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.blue[700],
+          foregroundColor: Colors.white,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            const Text(
+              'Chọn nội dung ôn tập & kiểm tra:',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+
+            // Card 1: Tuần 7 - Xác thực & Phân quyền
+            _buildActionCard(
+              context,
+              title: 'Tuần 7: Xác thực & Phân quyền',
+              subtitle: 'Đăng ký, Đăng nhập JWT, Tự động đăng nhập đúng Role (Admin/User), SmartAuth, Quản lý Danh mục.',
+              icon: Icons.security_rounded,
+              color: Colors.blue[700]!,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Card 2: Tuần 6 - Chợ sản phẩm
+            _buildActionCard(
+              context,
+              title: 'Tuần 6: Chợ sản phẩm (MarketScreen)',
+              subtitle: 'Sử dụng FutureBuilder theo đúng mẫu của giảng viên, hiển thị ảnh, tìm kiếm theo tên, xem theo ID, CRUD sản phẩm.',
+              icon: Icons.storefront_rounded,
+              color: Colors.teal[700]!,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MarketScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Card 3: Tuần 6 - Bảng tin bài viết
+            _buildActionCard(
+              context,
+              title: 'Tuần 6: Bảng tin bài đăng (FeedScreen)',
+              subtitle: 'Bảng tin phong cách Facebook kết nối REST API Posts, hỗ trợ đăng bài mới, sửa, xóa, Thích và Bình luận.',
+              icon: Icons.dynamic_feed_rounded,
+              color: Colors.indigo[700]!,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FeedScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Card 4: Tổng hợp ôn tập
+            _buildActionCard(
+              context,
+              title: 'Tổng hợp ôn tập (ExamPrepApp)',
+              subtitle: 'Bộ giao diện tích hợp Provider, SQLite ghi chú ngoại tuyến, Yêu thích và Cài đặt endpoint nâng cao.',
+              icon: Icons.auto_stories_rounded,
+              color: Colors.deepPurple[700]!,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => _ReadyApp(
+                      preferences: preferences,
+                      onExit: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 30),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[700],
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ReadyApp extends StatefulWidget {
