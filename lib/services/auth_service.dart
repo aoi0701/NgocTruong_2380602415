@@ -33,39 +33,78 @@ class AuthService {
                 !data.containsKey('status'));
 
         if (isSuccess) {
+          final Map<String, dynamic> dataMap = data;
           return {
             "success": true,
-            "message": data['message'] != null
-                ? data['message'].toString()
-                : 'Mã OTP đã được gửi đến email đăng ký của bạn.',
+            "message": dataMap['message'] != null
+                ? dataMap['message'].toString()
+                : 'Mã OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.',
+            "expiresInSeconds": dataMap['expiresInSeconds'] ?? 300,
+            "statusCode": 200,
           };
         } else {
+          final Map<String, dynamic>? dataMap = data is Map<String, dynamic> ? data : null;
           return {
             "success": false,
-            "message": (data is Map && data['message'] != null)
-                ? data['message'].toString()
+            "message": (dataMap != null && dataMap['message'] != null)
+                ? dataMap['message'].toString()
                 : 'Gửi mã OTP không thành công.',
+            "statusCode": 200,
           };
         }
       } else {
-        String msg = "Không thể gửi mã OTP (Mã lỗi ${response.statusCode})";
+        // Xử lý các mã lỗi thật từ máy chủ (503 SMTP chưa cấu hình, 429 Cooldown, 404 Not Found...)
+        String msg = '';
+        int? cooldownRemaining;
         try {
           final data = jsonDecode(response.body);
-          if (data is Map && data['message'] != null) {
-            msg = data['message'].toString();
+          if (data is Map) {
+            if (data['message'] != null && data['message'].toString().trim().isNotEmpty) {
+              msg = data['message'].toString().trim();
+            }
+            if (data['cooldownRemaining'] != null) {
+              cooldownRemaining = (data['cooldownRemaining'] as num).toInt();
+            }
           }
         } catch (_) {}
-        return {"success": false, "message": msg};
+
+        if (msg.isEmpty) {
+          if (response.statusCode == 503) {
+            msg = 'Dịch vụ gửi email (SMTP) chưa được cấu hình hoặc tạm thời không khả dụng (503).';
+          } else if (response.statusCode == 429) {
+            msg = 'Bạn đã gửi yêu cầu quá nhanh. Vui lòng đợi trong giây lát trước khi thử lại (429).';
+          } else if (response.statusCode == 404) {
+            msg = 'Không tìm thấy tài khoản với tên đăng nhập này (404).';
+          } else if (response.statusCode == 400) {
+            msg = 'Yêu cầu không hợp lệ (400). Vui lòng kiểm tra lại thông tin.';
+          } else if (response.statusCode >= 500) {
+            msg = 'Lỗi máy chủ nội bộ khi gửi OTP (Mã lỗi ${response.statusCode}).';
+          } else {
+            msg = 'Không thể gửi mã OTP (Mã lỗi ${response.statusCode}).';
+          }
+        }
+
+        final Map<String, dynamic> result = {
+          "success": false,
+          "message": msg,
+          "statusCode": response.statusCode,
+        };
+        if (cooldownRemaining != null) {
+          result["cooldownRemaining"] = cooldownRemaining;
+        }
+        return result;
       }
     } on TimeoutException {
       return {
         "success": false,
         "message": "Quá thời gian kết nối máy chủ (10s). Vui lòng thử lại.",
+        "statusCode": 408,
       };
     } catch (e) {
       return {
         "success": false,
         "message": "Lỗi kết nối khi yêu cầu OTP: $e",
+        "statusCode": 0,
       };
     }
   }

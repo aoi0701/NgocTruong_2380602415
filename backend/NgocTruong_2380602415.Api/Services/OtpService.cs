@@ -15,6 +15,7 @@ public class OtpItem
 public class OtpService : IOtpService
 {
     private static readonly ConcurrentDictionary<string, OtpItem> _otpStore = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _validateLock = new();
     private readonly IEmailService _emailService;
     private readonly ILogger<OtpService> _logger;
 
@@ -51,6 +52,9 @@ public class OtpService : IOtpService
         var otpCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString("D6");
         var now = DateTime.UtcNow;
 
+        // BẮT BUỘC: Gửi email trước. Nếu email thất bại (ném exception), OTP TUYỆT ĐỐI KHÔNG được lưu vào bộ nhớ!
+        await _emailService.SendOtpEmailAsync(email, key, otpCode, cancellationToken);
+
         var item = new OtpItem
         {
             Code = otpCode,
@@ -60,10 +64,12 @@ public class OtpService : IOtpService
             LastSentAt = now
         };
 
-        _otpStore[key] = item;
+        lock (_validateLock)
+        {
+            _otpStore[key] = item;
+        }
 
-        await _emailService.SendOtpEmailAsync(email, key, otpCode, cancellationToken);
-        _logger.LogInformation("Đã khởi tạo OTP mới cho tài khoản '{Username}', hết hạn lúc {ExpiresAt}", key, item.ExpiresAt);
+        _logger.LogInformation("Đã gửi email OTP thành công và khởi tạo OTP mới cho tài khoản '{Username}', hết hạn lúc {ExpiresAt}", key, item.ExpiresAt);
 
         return otpCode;
     }
@@ -78,48 +84,55 @@ public class OtpService : IOtpService
         var key = username.Trim();
         var code = otpCode.Trim();
 
-        if (!_otpStore.TryGetValue(key, out var item))
+        // Sử dụng lock để chống race condition khi có nhiều request đồng thời xác thực cùng lúc
+        lock (_validateLock)
         {
-            return (false, "Mã OTP không tồn tại hoặc chưa được yêu cầu. Vui lòng bấm Gửi OTP trước khi đăng nhập.");
-        }
-
-        // Kiểm tra thời gian hết hạn (5 phút)
-        if (DateTime.UtcNow > item.ExpiresAt)
-        {
-            _otpStore.TryRemove(key, out _);
-            return (false, "Mã OTP đã hết hạn (quá 5 phút). Vui lòng yêu cầu mã OTP mới.");
-        }
-
-        // Kiểm tra mã OTP khớp hay sai
-        if (!string.Equals(item.Code, code, StringComparison.Ordinal))
-        {
-            item.FailedAttempts++;
-            if (item.FailedAttempts >= 3)
+            if (!_otpStore.TryGetValue(key, out var item))
             {
-                // Vượt quá 3 lần thử sai -> vô hiệu hóa mã OTP
-                _otpStore.TryRemove(key, out _);
-                return (false, "Mã OTP không chính xác. Bạn đã nhập sai 3 lần, mã OTP đã bị vô hiệu hóa.");
+                return (false, "Mã OTP không tồn tại hoặc chưa được yêu cầu. Vui lòng bấm Gửi OTP trước khi đăng nhập.");
             }
 
-            var remaining = 3 - item.FailedAttempts;
-            return (false, $"Mã OTP không chính xác. Bạn còn {remaining} lần thử.");
+            // Kiểm tra thời gian hết hạn (5 phút)
+            if (DateTime.UtcNow > item.ExpiresAt)
+            {
+                _otpStore.TryRemove(key, out _);
+                return (false, "Mã OTP đã hết hạn (quá 5 phút). Vui lòng yêu cầu mã OTP mới.");
+            }
+
+            // Kiểm tra mã OTP khớp hay sai
+            if (!string.Equals(item.Code, code, StringComparison.Ordinal))
+            {
+                item.FailedAttempts++;
+                if (item.FailedAttempts >= 3)
+                {
+                    // Vượt quá 3 lần thử sai -> vô hiệu hóa mã OTP
+                    _otpStore.TryRemove(key, out _);
+                    return (false, "Mã OTP không chính xác. Bạn đã nhập sai 3 lần, mã OTP đã bị vô hiệu hóa.");
+                }
+
+                var remaining = 3 - item.FailedAttempts;
+                return (false, $"Mã OTP không chính xác. Bạn còn {remaining} lần thử.");
+            }
+
+            // Mã chính xác -> Single-use: Hủy OTP ngay sau khi xác thực thành công
+            _otpStore.TryRemove(key, out _);
+            _logger.LogInformation("Xác thực OTP thành công cho tài khoản '{Username}'. Mã OTP đã được giải phóng (single-use).", key);
+
+            return (true, string.Empty);
         }
-
-        // Mã chính xác -> Single-use: Hủy OTP ngay sau khi xác thực thành công
-        _otpStore.TryRemove(key, out _);
-        _logger.LogInformation("Xác thực OTP thành công cho tài khoản '{Username}'. Mã OTP đã được giải phóng (single-use).", key);
-
-        return (true, string.Empty);
     }
 
     public string? GetActiveOtpForTesting(string username)
     {
         if (string.IsNullOrWhiteSpace(username)) return null;
-        if (_otpStore.TryGetValue(username.Trim(), out var item))
+        lock (_validateLock)
         {
-            if (DateTime.UtcNow <= item.ExpiresAt)
+            if (_otpStore.TryGetValue(username.Trim(), out var item))
             {
-                return item.Code;
+                if (DateTime.UtcNow <= item.ExpiresAt)
+                {
+                    return item.Code;
+                }
             }
         }
         return null;

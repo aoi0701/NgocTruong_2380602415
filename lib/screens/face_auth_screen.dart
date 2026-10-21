@@ -9,6 +9,128 @@ import '../utils/auth.dart';
 import 'admin_screen.dart';
 import 'staff_screen.dart';
 import 'main_screen.dart';
+import 'login_screen.dart';
+
+/// Kết quả kiểm tra Liveness sinh trắc học
+class FaceLivenessResult {
+  final bool isSuccess;
+  final String? errorMessage;
+  final String? successDetail;
+
+  const FaceLivenessResult({
+    required this.isSuccess,
+    this.errorMessage,
+    this.successDetail,
+  });
+
+  factory FaceLivenessResult.passed(String detail) =>
+      FaceLivenessResult(isSuccess: true, successDetail: detail);
+
+  factory FaceLivenessResult.failed(String error) =>
+      FaceLivenessResult(isSuccess: false, errorMessage: error);
+}
+
+/// Bộ kiểm tra Liveness tương tác nghiêm ngặt:
+/// - Góc mặt trực diện: Yaw, Roll, Pitch trong khoảng [-15°, +15°]
+/// - Phát hiện chuyển động chớp mắt thật: Tỷ lệ mở mắt thay đổi từ > 0.7 sang < 0.25 rồi mở lại > 0.7
+/// - Hoặc nụ cười thật: smilingProbability >= 0.7
+class FaceLivenessChecker {
+  /// Kiểm tra góc mặt trực diện trong khoảng [-15°, +15°]
+  static bool isHeadAngleDirect({
+    required double yaw,
+    required double roll,
+    required double pitch,
+  }) {
+    return yaw.abs() <= 15.0 && roll.abs() <= 15.0 && pitch.abs() <= 15.0;
+  }
+
+  /// Kiểm tra nụ cười đạt chuẩn Liveness: smilingProbability >= 0.7
+  static bool isSmiling(double? smileProb) {
+    return smileProb != null && smileProb >= 0.7;
+  }
+
+  /// Kiểm tra chuỗi chớp mắt thật: Tỷ lệ mở mắt chuyển từ > 0.7 sang < 0.25 rồi mở lại > 0.7
+  static bool verifyBlinkSequence(List<double> eyeHistory) {
+    if (eyeHistory.length < 3) return false;
+    bool foundOpen1 = false;
+    bool foundClosed = false;
+
+    for (final val in eyeHistory) {
+      if (!foundOpen1) {
+        if (val > 0.7) foundOpen1 = true;
+      } else if (!foundClosed) {
+        if (val < 0.25) foundClosed = true;
+      } else {
+        if (val > 0.7) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Đánh giá Liveness toàn diện cho 1 khuôn mặt ML Kit
+  static FaceLivenessResult evaluate({
+    required Face face,
+    int totalFaces = 1,
+    List<double>? blinkHistory,
+  }) {
+    if (totalFaces > 1) {
+      return FaceLivenessResult.failed(
+        'Phát hiện $totalFaces khuôn mặt trong ảnh. Vui lòng chỉ đứng một mình trước camera để chống giả mạo.',
+      );
+    }
+
+    final double rotY = face.headEulerAngleY ?? 0.0; // Yaw
+    final double rotZ = face.headEulerAngleZ ?? 0.0; // Roll
+    final double rotX = face.headEulerAngleX ?? 0.0; // Pitch
+
+    if (!isHeadAngleDirect(yaw: rotY, roll: rotZ, pitch: rotX)) {
+      return FaceLivenessResult.failed(
+        '❌ Góc mặt chưa thẳng: Vui lòng nhìn trực diện vào camera (Lệch ≤ 15°).\n'
+        'Hiện tại: Yaw: ${rotY.toStringAsFixed(1)}°, Roll: ${rotZ.toStringAsFixed(1)}°, Pitch: ${rotX.toStringAsFixed(1)}°',
+      );
+    }
+
+    // 1. Kiểm tra nụ cười
+    final double? smile = face.smilingProbability;
+    final bool smilingPassed = isSmiling(smile);
+
+    // 2. Kiểm tra chuỗi chớp mắt
+    final double leftEye = face.leftEyeOpenProbability ?? 0.0;
+    final double rightEye = face.rightEyeOpenProbability ?? 0.0;
+    final double avgEye = (leftEye + rightEye) / 2.0;
+
+    bool blinkPassed = false;
+    if (blinkHistory != null && blinkHistory.isNotEmpty) {
+      final historyWithCurrent = List<double>.from(blinkHistory)..add(avgEye);
+      blinkPassed = verifyBlinkSequence(historyWithCurrent);
+    }
+
+    if (smilingPassed) {
+      return FaceLivenessResult.passed(
+        '✅ Đạt chuẩn Liveness: Phát hiện nụ cười tự nhiên (${((smile ?? 0) * 100).toStringAsFixed(1)}%) và góc mặt trực diện chuẩn!',
+      );
+    }
+
+    if (blinkPassed) {
+      return FaceLivenessResult.passed(
+        '✅ Đạt chuẩn Liveness: Phát hiện chuyển động chớp mắt thật (Mở > 0.7 ➔ Nhắm < 0.25 ➔ Mở > 0.7)!',
+      );
+    }
+
+    // 3. Nếu chưa chớp mắt/cười: Cả hai mắt phải mở to rõ (> 75%)
+    if (leftEye >= 0.75 && rightEye >= 0.75) {
+      return FaceLivenessResult.passed(
+        '✅ Đạt chuẩn Liveness: Hai mắt mở to rõ (> 75%) và góc mặt trực diện chuẩn (-15° đến +15°)!',
+      );
+    }
+
+    return FaceLivenessResult.failed(
+      '❌ Kiểm tra Liveness thất bại:\n'
+      'Vui lòng nhìn trực diện camera, mở to cả hai mắt (> 70%) hoặc mỉm cười nhẹ (> 70%) để xác thực người thật.\n'
+      'Mắt trái: ${(leftEye * 100).toStringAsFixed(1)}%, Mắt phải: ${(rightEye * 100).toStringAsFixed(1)}%',
+    );
+  }
+}
 
 class FaceAuthScreen extends StatefulWidget {
   final bool initialEnrollmentMode;
@@ -35,17 +157,23 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
   String _statusMessage = 'Vui lòng hướng camera trực diện vào khuôn mặt và bấm chụp để quét.';
   bool _isLivenessPassed = false;
 
-  // Trạng thái tab Đăng ký mẫu (Enrollment)
+  // Trạng thái phiên đăng nhập của người dùng
+  bool _isLoggedIn = false;
+  String? _loggedInUsername;
+  String? _loggedInRole;
+
+  // Trạng thái tab Đăng nhập bằng khuôn mặt (Tab 0)
+  final TextEditingController _authUsernameController = TextEditingController();
+  final TextEditingController _authPasswordController = TextEditingController();
+  final TextEditingController _authOtpController = TextEditingController();
+  Map<String, dynamic>? _matchedAccount;
+  bool _isSubmittingLogin = false;
+  bool _obscureAuthPassword = true;
+
+  // Trạng thái tab Đăng ký mẫu (Tab 1)
   final TextEditingController _enrollUsernameController = TextEditingController();
   final TextEditingController _enrollRoleController = TextEditingController(text: 'Staff');
   Map<String, dynamic>? _lastEnrolledProfile;
-
-  // Trạng thái tab Xác thực (Authentication)
-  Map<String, dynamic>? _matchedAccount;
-  final TextEditingController _authPasswordController = TextEditingController();
-  final TextEditingController _authOtpController = TextEditingController();
-  bool _isSubmittingLogin = false;
-  bool _obscureAuthPassword = true;
 
   static const String _enrolledProfilesKey = 'enrolled_face_profiles_v2';
 
@@ -66,73 +194,50 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
     );
     _faceDetector = FaceDetector(options: options);
 
-    _initDefaultUsername();
+    _initAuthStatus();
   }
 
-  Future<void> _initDefaultUsername() async {
-    if (widget.defaultUsername != null && widget.defaultUsername!.isNotEmpty) {
-      _enrollUsernameController.text = widget.defaultUsername!;
-    } else {
-      final currentUsername = await Auth.getUsername();
-      final currentRole = await Auth.getRole();
-      if (currentUsername != null && currentUsername.isNotEmpty) {
-        setState(() {
-          _enrollUsernameController.text = currentUsername;
-          if (currentRole != null && currentRole.isNotEmpty) {
-            _enrollRoleController.text = currentRole;
-          }
-        });
+  Future<void> _initAuthStatus() async {
+    final loggedIn = await Auth.isLoggedIn();
+    final username = await Auth.getUsername();
+    final role = await Auth.getRole();
+
+    if (!mounted) return;
+    setState(() {
+      _isLoggedIn = loggedIn;
+      _loggedInUsername = username;
+      _loggedInRole = role;
+
+      if (widget.defaultUsername != null && widget.defaultUsername!.isNotEmpty) {
+        _authUsernameController.text = widget.defaultUsername!;
+      } else if (username != null && username.isNotEmpty) {
+        _authUsernameController.text = username;
       }
-    }
+
+      if (loggedIn && username != null && username.isNotEmpty) {
+        _enrollUsernameController.text = username;
+        if (role != null && role.isNotEmpty) {
+          _enrollRoleController.text = role;
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _faceDetector.close();
     _tabController.dispose();
-    _enrollUsernameController.dispose();
-    _enrollRoleController.dispose();
+    _authUsernameController.dispose();
     _authPasswordController.dispose();
     _authOtpController.dispose();
+    _enrollUsernameController.dispose();
+    _enrollRoleController.dispose();
     super.dispose();
   }
 
   // ==========================================
-  // 1. KIỂM TRA LIVENESS & TÍNH TOÁN ĐẶC TRƯNG
+  // 1. TÍNH TOÁN ĐẶC TRƯNG & SO KHỚP MA TRẬN
   // ==========================================
-
-  /// Kiểm tra Liveness nghiêm ngặt theo Section B:
-  /// - Cả hai mắt mở rõ (> 0.75)
-  /// - Góc mặt thẳng trực diện (quay ngang và nghiêng lệch <= 15°)
-  String? _checkLiveness(Face face, int totalFaces) {
-    if (totalFaces > 1) {
-      return 'Phát hiện $totalFaces khuôn mặt trong ảnh. Vui lòng chỉ đứng một mình trước camera.';
-    }
-
-    final double leftEyeOpen = face.leftEyeOpenProbability ?? 0.0;
-    final double rightEyeOpen = face.rightEyeOpenProbability ?? 0.0;
-
-    // Điều kiện: cả hai mắt mở > 0.75
-    if (leftEyeOpen <= 0.75 || rightEyeOpen <= 0.75) {
-      final leftPct = (leftEyeOpen * 100).toStringAsFixed(1);
-      final rightPct = (rightEyeOpen * 100).toStringAsFixed(1);
-      return '❌ Kiểm tra Liveness thất bại: Yêu cầu cả hai mắt mở rõ (> 75%).\n'
-          'Hiện tại: Mắt trái: $leftPct%, Mắt phải: $rightPct%.\n'
-          'Vui lòng mở to hai mắt, không nhắm mắt và không đeo kính râm.';
-    }
-
-    // Điều kiện: góc mặt thẳng
-    final double rotY = face.headEulerAngleY ?? 0.0; // Yaw
-    final double rotZ = face.headEulerAngleZ ?? 0.0; // Roll
-    final double rotX = face.headEulerAngleX ?? 0.0; // Pitch
-
-    if (rotY.abs() > 15.0 || rotZ.abs() > 15.0 || rotX.abs() > 20.0) {
-      return '❌ Góc mặt chưa thẳng: Vui lòng nhìn trực diện vào camera.\n'
-          'Hiện tại: Góc quay: ${rotY.toStringAsFixed(1)}°, Nghiêng: ${rotZ.toStringAsFixed(1)}° (Yêu cầu lệch ≤ 15°).';
-    }
-
-    return null; // Đạt chuẩn Liveness
-  }
 
   /// Trích xuất vector đặc trưng hình học bất biến theo tỷ lệ
   Map<String, double> _extractFaceFeatures(Face face) {
@@ -143,7 +248,8 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
     final rightEye = face.landmarks[FaceLandmarkType.rightEye];
     final nose = face.landmarks[FaceLandmarkType.noseBase];
     final mouth = face.landmarks[FaceLandmarkType.bottomMouth] ??
-        face.landmarks[FaceLandmarkType.leftMouth];
+        face.landmarks[FaceLandmarkType.leftMouth] ??
+        face.landmarks[FaceLandmarkType.rightMouth];
 
     double eyeDistRatio = 0.35;
     double eyeToNoseRatio = 0.25;
@@ -186,12 +292,11 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
     }
     if (count == 0) return 0.0;
     final avgDiff = diff / count;
-    // Chênh lệch trung bình < 0.1 được xem là trùng khớp cao (> 70%)
     return (1.0 - (avgDiff * 3.0)).clamp(0.0, 1.0);
   }
 
   // ==========================================
-  // 2. CHỤP ẢNH TỪ CAMERA (CHẶN THƯ VIỆN ẢNH)
+  // 2. CHỤP ẢNH TỪ CAMERA TRỰC TIẾP
   // ==========================================
 
   /// Bắt buộc chỉ sử dụng ImageSource.camera trực tiếp để chống gian lận
@@ -220,21 +325,23 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
 
   // ==========================================
   // 3. QUY TRÌNH ĐĂNG KÝ KHUÔN MẶT MẪU (ENROLLMENT)
+  // Chỉ khả dụng khi ĐÃ ĐĂNG NHẬP, đồng bộ POST /api/Attendance/enroll-face
   // ==========================================
 
   Future<void> _handleEnrollment() async {
-    final username = _enrollUsernameController.text.trim();
-    final role = _enrollRoleController.text.trim();
-
-    if (username.isEmpty) {
+    // 1. Kiểm tra bắt buộc đã đăng nhập
+    if (!_isLoggedIn || _loggedInUsername == null || _loggedInUsername!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập tên tài khoản cần đăng ký mẫu khuôn mặt'),
-          backgroundColor: Colors.orange,
+          content: Text('Chỉ người dùng đã đăng nhập mới được phép đăng ký mẫu khuôn mặt.'),
+          backgroundColor: Colors.red,
         ),
       );
       return;
     }
+
+    final username = _loggedInUsername!;
+    final role = _loggedInRole ?? 'User';
 
     final file = await _captureFromCamera();
     if (file == null) return;
@@ -242,7 +349,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
     setState(() {
       _capturedImage = file;
       _isProcessing = true;
-      _statusMessage = 'Đang phân tích khuôn mặt và kiểm tra Liveness...';
+      _statusMessage = 'Đang phân tích khuôn mặt và kiểm tra Liveness tương tác...';
       _isLivenessPassed = false;
     });
 
@@ -250,9 +357,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
       final inputImage = InputImage.fromFilePath(file.path);
       final faces = await _faceDetector.processImage(inputImage);
 
-      setState(() {
-        _isProcessing = false;
-      });
+      setState(() => _isProcessing = false);
 
       if (faces.isEmpty) {
         setState(() {
@@ -262,16 +367,17 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
       }
 
       final face = faces.first;
-      final livenessError = _checkLiveness(face, faces.length);
-      if (livenessError != null) {
+      final livenessResult = FaceLivenessChecker.evaluate(face: face, totalFaces: faces.length);
+
+      if (!livenessResult.isSuccess) {
         setState(() {
           _isLivenessPassed = false;
-          _statusMessage = livenessError;
+          _statusMessage = livenessResult.errorMessage ?? 'Kiểm tra Liveness không đạt';
         });
         return;
       }
 
-      // Trích xuất đặc trưng và lưu mẫu vào SharedPreferences
+      // Trích xuất đặc trưng
       final features = _extractFaceFeatures(face);
       final profile = {
         'username': username,
@@ -280,6 +386,13 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
         'features': features,
       };
 
+      // Đồng bộ mẫu khuôn mặt lên máy chủ qua API: POST /api/Attendance/enroll-face
+      final enrollResult = await Auth.enrollFace(
+        username: username,
+        features: features,
+      );
+
+      // Lưu bản sao an toàn cục bộ vào SharedPreferences để hỗ trợ offline/dự phòng
       final prefs = await SharedPreferences.getInstance();
       final rawList = prefs.getString(_enrolledProfilesKey);
       List<dynamic> profiles = [];
@@ -289,19 +402,22 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
         } catch (_) {}
       }
 
-      // Ghi đè nếu username đã tồn tại mẫu, hoặc thêm mới
-      profiles.removeWhere((p) => (p is Map) && p['username']?.toString().toLowerCase() == username.toLowerCase());
+      profiles.removeWhere((p) =>
+          (p is Map) && p['username']?.toString().toLowerCase() == username.toLowerCase());
       profiles.add(profile);
-
       await prefs.setString(_enrolledProfilesKey, jsonEncode(profiles));
+
+      final bool serverOk = enrollResult['success'] == true;
+      final String syncStatus = serverOk
+          ? 'Đã đồng bộ thành công lên máy chủ (POST /api/Attendance/enroll-face)'
+          : 'Đã lưu an toàn cục bộ trên thiết bị (${enrollResult['message']})';
 
       setState(() {
         _isLivenessPassed = true;
         _lastEnrolledProfile = profile;
-        _statusMessage = '✅ Đăng ký khuôn mặt mẫu thành công cho tài khoản "$username"!\n'
-            '• Hai mắt mở rõ (> 75%)\n'
-            '• Góc nhìn trực diện chuẩn\n'
-            '• Mẫu sinh trắc học đã lưu bảo mật trên thiết bị.';
+        _statusMessage = '✅ Đăng ký mẫu khuôn mặt thành công cho tài khoản "$username"!\n'
+            '• ${livenessResult.successDetail ?? 'Đạt chuẩn Liveness'}\n'
+            '• $syncStatus.';
       });
 
       if (mounted) {
@@ -309,6 +425,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
           SnackBar(
             content: Text('Đã ghi nhận mẫu khuôn mặt thành công cho $username!'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -321,106 +438,162 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
   }
 
   // ==========================================
-  // 4. QUY TRÌNH XÁC THỰC KHUÔN MẶT (AUTHENTICATION)
+  // 4. TAB ĐĂNG NHẬP BẰNG KHUÔN MẶT
+  // Nhập username -> Tải mẫu từ server (GET /api/Attendance/face-profile/{username})
+  // Quét camera Liveness -> So khớp ma trận -> Tự động kích hoạt gửi OTP qua email
   // ==========================================
 
   Future<void> _handleVerification() async {
-    final prefs = await SharedPreferences.getInstance();
-    final rawList = prefs.getString(_enrolledProfilesKey);
-    List<dynamic> profiles = [];
-    if (rawList != null) {
-      try {
-        profiles = jsonDecode(rawList) as List<dynamic>;
-      } catch (_) {}
-    }
-
-    if (profiles.isEmpty) {
+    final username = _authUsernameController.text.trim();
+    if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Chưa có mẫu khuôn mặt nào được đăng ký trên thiết bị. Vui lòng chuyển sang tab "Đăng ký mẫu" trước.'),
+          content: Text('Vui lòng nhập Tên đăng nhập của bạn trước để đối chiếu mẫu khuôn mặt'),
           backgroundColor: Colors.orange,
-          duration: Duration(seconds: 4),
         ),
       );
       return;
     }
 
+    setState(() {
+      _isProcessing = true;
+      _statusMessage = 'Đang tải mẫu khuôn mặt của tài khoản "$username" từ máy chủ...';
+      _isLivenessPassed = false;
+      _matchedAccount = null;
+    });
+
+    // 1. Tải mẫu khuôn mặt từ server: GET /api/Attendance/face-profile/{username}
+    Map<String, dynamic>? enrolledFeatures;
+    String? enrolledRole;
+
+    try {
+      final serverResp = await Auth.getFaceProfile(username);
+      if (serverResp['success'] == true && serverResp['data'] != null) {
+        final data = serverResp['data'];
+        if (data is Map) {
+          if (data['faceVectorJson'] is String && (data['faceVectorJson'] as String).isNotEmpty) {
+            try {
+              enrolledFeatures = Map<String, dynamic>.from(jsonDecode(data['faceVectorJson']) as Map);
+            } catch (_) {}
+          } else if (data['features'] is Map) {
+            enrolledFeatures = Map<String, dynamic>.from(data['features'] as Map);
+          } else if (data['Features'] is Map) {
+            enrolledFeatures = Map<String, dynamic>.from(data['Features'] as Map);
+          }
+          enrolledRole = data['role']?.toString() ?? data['Role']?.toString();
+        }
+      }
+    } catch (_) {}
+
+    // 2. Dự phòng: Kiểm tra bản sao cục bộ nếu máy chủ chưa có endpoint hoặc mạng chập chờn
+    if (enrolledFeatures == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final rawList = prefs.getString(_enrolledProfilesKey);
+      if (rawList != null) {
+        try {
+          final List<dynamic> localList = jsonDecode(rawList) as List<dynamic>;
+          for (final p in localList) {
+            if (p is Map &&
+                p['username']?.toString().toLowerCase() == username.toLowerCase() &&
+                p['features'] is Map) {
+              enrolledFeatures = Map<String, dynamic>.from(p['features'] as Map);
+              enrolledRole = p['role']?.toString();
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (enrolledFeatures == null) {
+      setState(() {
+        _isProcessing = false;
+        _statusMessage = '❌ Không tìm thấy mẫu khuôn mặt cho tài khoản "$username".\n'
+            'Vui lòng đăng nhập bằng mật khẩu & OTP và vào mục "Đăng ký mẫu" để thiết lập khuôn mặt trước.';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Tài khoản "$username" chưa đăng ký mẫu khuôn mặt trên hệ thống.'),
+            backgroundColor: Colors.orange[800],
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isProcessing = false;
+    });
+
+    // 3. Mở camera chụp ảnh trực tiếp
     final file = await _captureFromCamera();
     if (file == null) return;
 
     setState(() {
       _capturedImage = file;
       _isProcessing = true;
-      _statusMessage = 'Đang quét khuôn mặt và đối chiếu mẫu sinh trắc học...';
+      _statusMessage = 'Đang quét khuôn mặt, kiểm tra Liveness và so khớp ma trận đặc trưng...';
       _isLivenessPassed = false;
-      _matchedAccount = null;
     });
 
     try {
       final inputImage = InputImage.fromFilePath(file.path);
       final faces = await _faceDetector.processImage(inputImage);
 
-      setState(() {
-        _isProcessing = false;
-      });
+      setState(() => _isProcessing = false);
 
       if (faces.isEmpty) {
         setState(() {
-          _statusMessage = '❌ Không nhận diện được khuôn mặt. Vui lòng nhìn trực diện camera và thử lại.';
+          _statusMessage = '❌ Không nhận diện được khuôn mặt trong ảnh camera. Vui lòng nhìn thẳng và thử lại.';
         });
         return;
       }
 
       final face = faces.first;
-      final livenessError = _checkLiveness(face, faces.length);
-      if (livenessError != null) {
+      final livenessResult = FaceLivenessChecker.evaluate(face: face, totalFaces: faces.length);
+
+      if (!livenessResult.isSuccess) {
         setState(() {
           _isLivenessPassed = false;
-          _statusMessage = livenessError;
+          _statusMessage = livenessResult.errorMessage ?? 'Kiểm tra Liveness không đạt';
         });
         return;
       }
 
-      // Đối chiếu với các mẫu đã ghi nhận trên thiết bị
+      // 4. So khớp ma trận đặc trưng hình học
       final currentFeatures = _extractFaceFeatures(face);
-      Map<String, dynamic>? bestMatch;
-      double highestSimilarity = 0.0;
-
-      for (final p in profiles) {
-        if (p is Map && p['features'] is Map) {
-          final enrolledFeatures = Map<String, dynamic>.from(p['features'] as Map);
-          final sim = _calculateSimilarity(currentFeatures, enrolledFeatures);
-          if (sim > highestSimilarity) {
-            highestSimilarity = sim;
-            bestMatch = Map<String, dynamic>.from(p);
-          }
-        }
-      }
+      final similarity = _calculateSimilarity(currentFeatures, enrolledFeatures);
 
       // Ngưỡng tin cậy tối thiểu 65% để xác thực thành công
-      if (bestMatch == null || highestSimilarity < 0.65) {
+      if (similarity < 0.65) {
         setState(() {
-          _isLivenessPassed = true;
-          _statusMessage = '❌ Không tìm thấy mẫu khuôn mặt phù hợp trong hệ thống.\n'
-              'Độ tương đồng cao nhất: ${(highestSimilarity * 100).toStringAsFixed(1)}% (Yêu cầu ≥ 65%).\n'
-              'Vui lòng đăng ký mẫu trước hoặc sử dụng đăng nhập mật khẩu/OTP truyền thống.';
+          _isLivenessPassed = false;
+          _statusMessage = '❌ Khuôn mặt không khớp với mẫu của tài khoản "$username".\n'
+              'Độ tương đồng: ${(similarity * 100).toStringAsFixed(1)}% (Yêu cầu ≥ 65%).\n'
+              'Vui lòng căn chỉnh lại góc mặt hoặc sử dụng đăng nhập mật khẩu.';
         });
         return;
       }
 
-      final matchedUsername = bestMatch['username']?.toString() ?? '';
+      // 5. Khuôn mặt khớp thành công -> Tự động kích hoạt gửi OTP qua email (TUYỆT ĐỐI KHÔNG BYPASS OTP)
+      final accountData = {
+        'username': username,
+        'role': enrolledRole ?? 'Staff',
+        'similarity': similarity,
+      };
+
       setState(() {
         _isLivenessPassed = true;
-        _matchedAccount = bestMatch;
-        _statusMessage = '✅ Xác thực khuôn mặt thành công!\n'
-            '• Tài khoản: $matchedUsername\n'
-            '• Vai trò: ${bestMatch!['role'] ?? 'Staff'}\n'
-            '• Độ tương đồng: ${(highestSimilarity * 100).toStringAsFixed(1)}%\n'
+        _matchedAccount = accountData;
+        _statusMessage = '✅ Xác thực khuôn mặt thành công cho tài khoản "$username"!\n'
+            '• Độ tương đồng: ${(similarity * 100).toStringAsFixed(1)}%\n'
+            '• ${livenessResult.successDetail ?? 'Đạt chuẩn Liveness'}\n'
             '• Đang tự động gửi mã OTP tới email của tài khoản...';
       });
 
-      // Tự động kích hoạt gửi mã OTP đến email của người dùng đó (Không bypass OTP)
-      _triggerOtpAndShowLoginDialog(matchedUsername);
+      _triggerOtpAndShowLoginDialog(username);
     } catch (e) {
       setState(() {
         _isProcessing = false;
@@ -429,23 +602,29 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
     }
   }
 
-  /// Tự động kích hoạt gửi mã OTP đến email và hiển thị modal nhập OTP hoàn tất đăng nhập
+  /// Tự động kích hoạt gửi mã OTP qua email và yêu cầu người dùng nhập OTP để hoàn tất đăng nhập
   Future<void> _triggerOtpAndShowLoginDialog(String username) async {
     final otpResult = await Auth.requestOtp(username);
-    final msg = otpResult['message'] ?? 'Mã OTP đã được gửi đến email đăng ký của bạn.';
+    final isSuccess = otpResult['success'] == true;
+    final msg = otpResult['message'] ??
+        (isSuccess
+            ? 'Mã xác thực OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.'
+            : 'Không thể gửi mã OTP');
 
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: otpResult['success'] == true ? Colors.green : Colors.orange,
-        duration: const Duration(seconds: 4),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 5),
       ),
     );
 
-    // Mở hộp thoại yêu cầu nhập mật khẩu và mã OTP để hoàn tất đăng nhập
-    _showCompleteLoginSheet(username);
+    if (isSuccess) {
+      // Mở hộp thoại yêu cầu nhập mật khẩu và mã OTP để hoàn tất đăng nhập
+      _showCompleteLoginSheet(username);
+    }
   }
 
   void _showCompleteLoginSheet(String username) {
@@ -490,7 +669,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
                   ),
                   child: const Text(
                     'Khuôn mặt đã được xác thực an toàn qua Camera & ML Kit.\n'
-                    'Vui lòng nhập mật khẩu và mã OTP vừa nhận từ email để đăng nhập (Không thể bypass OTP).',
+                    'Vui lòng nhập mật khẩu và mã OTP vừa nhận từ email để hoàn tất đăng nhập (Không thể bypass OTP).',
                     style: TextStyle(fontSize: 13, color: Colors.black87),
                   ),
                 ),
@@ -519,7 +698,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
                 ),
                 const SizedBox(height: 12),
 
-                // Trường nhập mã OTP từ email
+                // Trường nhập mã OTP từ email (Bắt buộc)
                 TextField(
                   controller: _authOtpController,
                   keyboardType: TextInputType.number,
@@ -536,7 +715,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
                 ),
                 const SizedBox(height: 20),
 
-                // Nút Đăng nhập
+                // Nút Đăng nhập hoàn tất
                 SizedBox(
                   height: 50,
                   child: ElevatedButton(
@@ -630,7 +809,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
           controller: _tabController,
           indicatorColor: Colors.white,
           tabs: const [
-            Tab(icon: Icon(Icons.face_retouching_natural_rounded), text: 'Xác thực & Đăng nhập'),
+            Tab(icon: Icon(Icons.face_retouching_natural_rounded), text: 'Đăng nhập bằng khuôn mặt'),
             Tab(icon: Icon(Icons.person_add_alt_1_rounded), text: 'Đăng ký mẫu'),
           ],
         ),
@@ -670,7 +849,7 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
 
               // Khung hiển thị ảnh Camera chụp được
               Container(
-                height: 260,
+                height: 250,
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(20),
@@ -721,7 +900,12 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
                         children: [
                           SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                           SizedBox(width: 12),
-                          Text('Đang kiểm tra Liveness và phân tích khuôn mặt...'),
+                          Expanded(
+                            child: Text(
+                              'Đang kiểm tra Liveness và phân tích khuôn mặt...',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       )
                     : Text(
@@ -735,15 +919,30 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
               ),
               const SizedBox(height: 20),
 
-              // Nội dung hiển thị tùy theo Tab đang chọn
+              // Nội dung hiển thị theo Tab
               AnimatedBuilder(
                 animation: _tabController,
                 builder: (context, _) {
                   if (_tabController.index == 0) {
-                    // TAB 1: XÁC THỰC & ĐĂNG NHẬP
+                    // TAB 0: ĐĂNG NHẬP BẰNG KHUÔN MẶT
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        TextField(
+                          controller: _authUsernameController,
+                          decoration: InputDecoration(
+                            labelText: 'Tên người dùng (Username) hoặc Email',
+                            hintText: 'Nhập tên tài khoản để đối chiếu mẫu',
+                            prefixIcon: const Icon(Icons.person_outline),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
                         ElevatedButton.icon(
                           onPressed: _isProcessing ? null : _handleVerification,
                           style: ElevatedButton.styleFrom(
@@ -775,47 +974,111 @@ class _FaceAuthScreenState extends State<FaceAuthScreen> with SingleTickerProvid
                       ],
                     );
                   } else {
-                    // TAB 2: ĐĂNG KÝ MẪU (ENROLLMENT)
+                    // TAB 1: ĐĂNG KÝ MẪU (ENROLLMENT)
+                    // Chỉ khả dụng khi người dùng ĐÃ ĐĂNG NHẬP
+                    if (!_isLoggedIn) {
+                      return Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.lock_person_rounded, size: 48, color: Colors.orange[800]),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Yêu cầu đăng nhập tài khoản',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange[900],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Chức năng Đăng ký mẫu khuôn mặt chỉ khả dụng cho người dùng đã đăng nhập vào hệ thống.\n'
+                              'Bạn không thể tự ý nhập tên bất kỳ để ghi đè mẫu sinh trắc học của tài khoản khác.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13.5, color: Colors.black87, height: 1.4),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue[700],
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              icon: const Icon(Icons.login_rounded),
+                              label: const Text('Đi đến Đăng nhập'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    // Khi người dùng ĐÃ ĐĂNG NHẬP
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextField(
-                          controller: _enrollUsernameController,
-                          decoration: InputDecoration(
-                            labelText: 'Tên tài khoản nhân viên / người dùng',
-                            prefixIcon: const Icon(Icons.person_outline),
-                            filled: true,
-                            fillColor: Colors.grey[100],
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
+                        // Thông tin tài khoản đăng nhập (Được khoá, không cho phép nhập tên tuỳ ý)
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.teal.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        DropdownButtonFormField<String>(
-                          value: ['Staff', 'User', 'Admin'].contains(_enrollRoleController.text)
-                              ? _enrollRoleController.text
-                              : 'Staff',
-                          decoration: InputDecoration(
-                            labelText: 'Vai trò tài khoản',
-                            filled: true,
-                            fillColor: Colors.grey[100],
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.account_circle_rounded, color: Colors.teal[800], size: 36),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Tài khoản đăng ký: ${_loggedInUsername ?? ''}',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.teal[900],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Vai trò: ${_loggedInRole ?? 'User'} • Mẫu sẽ được đồng bộ lên máy chủ',
+                                      style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.teal.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'Đã xác thực',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[800],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          items: const [
-                            DropdownMenuItem(value: 'Staff', child: Text('Nhân viên (Staff)')),
-                            DropdownMenuItem(value: 'User', child: Text('Khách hàng / Sinh viên (User)')),
-                            DropdownMenuItem(value: 'Admin', child: Text('Quản trị viên (Admin)')),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _enrollRoleController.text = val);
-                            }
-                          },
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(

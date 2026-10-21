@@ -151,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isSendingOtp = false);
 
       if (result['success'] == true) {
-        // Kích hoạt bộ đếm thời gian 60 giây
+        // Server trả về 200 OK -> Mới bắt đầu đếm ngược cooldown 60s và hiển thị thông báo xanh
         _startOtpCooldown(60);
 
         // Xóa trường nhập OTP để người dùng tự nhập mã gửi về email
@@ -160,19 +160,22 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              result['message'] ?? 'Mã xác thực OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.',
+              result['message'] ?? 'Mã OTP đã được gửi đến email đăng ký của bạn. Vui lòng kiểm tra hộp thư.',
             ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 5),
           ),
         );
       } else {
-        final errorMsg = result['message'] ?? 'Không thể gửi mã OTP. Vui lòng kiểm tra lại tên tài khoản.';
+        // Server trả về lỗi (như 503 SMTP chưa cấu hình, 429 cooldown, hoặc 404):
+        // Hiển thị thông báo lỗi thật màu đỏ chi tiết.
+        // Tuyệt đối KHÔNG bật trạng thái "Đã gửi OTP", KHÔNG đếm cooldown 60s.
+        final errorMsg = result['message'] ?? 'Không thể gửi mã OTP. Vui lòng kiểm tra lại tài khoản.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -181,8 +184,9 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isSendingOtp = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi kết nối khi gửi OTP: $e'),
+          content: Text('Lỗi kết nối khi yêu cầu OTP: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
       );
     }
@@ -244,7 +248,8 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        // Thông báo lỗi rõ ràng từ server (ví dụ: OTP sai, hết hạn, hoặc mật khẩu không đúng)
+        // Xóa sạch token cũ khi 401 Unauthorized hoặc đăng nhập thất bại
+        await Auth.logout();
         final errorMessage = result['message'] ?? 'Tên đăng nhập, mật khẩu hoặc mã OTP không chính xác';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

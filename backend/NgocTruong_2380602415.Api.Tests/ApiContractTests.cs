@@ -241,13 +241,13 @@ public sealed class ApiContractTests
     }
 
     [Fact]
-    public async Task Register_cannot_self_assign_admin_role()
+    public async Task Register_cannot_self_assign_admin_or_staff_role()
     {
         using var database = new TestDatabase();
         using var app = database.Open();
         using var client = app.CreateClient();
 
-        // 1. Cố ý đăng ký tài khoản với vai trò Admin -> Bị từ chối 400 BadRequest
+        // 1. Cố ý đăng ký tài khoản với vai trò Admin -> Thành công nhưng chỉ được cấp vai trò User
         var adminRegRes = await client.PostAsJsonAsync("/api/Authenticate/register", new
         {
             username = "hackadmin",
@@ -256,9 +256,9 @@ public sealed class ApiContractTests
             initials = "HCK",
             role = "Admin"
         });
-        Assert.Equal(HttpStatusCode.BadRequest, adminRegRes.StatusCode);
+        Assert.True(adminRegRes.IsSuccessStatusCode);
 
-        // 2. Đăng ký với Staff -> Hợp lệ 200 OK
+        // 2. Cố ý đăng ký với vai trò Staff -> Thành công nhưng chỉ được cấp vai trò User
         var staffRegRes = await client.PostAsJsonAsync("/api/Authenticate/register", new
         {
             username = "validstaff",
@@ -268,6 +268,22 @@ public sealed class ApiContractTests
             role = "Staff"
         });
         Assert.True(staffRegRes.IsSuccessStatusCode);
+
+        // Kiểm tra trong DB: Cả hai tài khoản đều chỉ có vai trò User
+        using var scope = app.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<NgocTruong_2380602415.Api.Models.User>>();
+
+        var hackAdmin = await userManager.FindByNameAsync("hackadmin");
+        Assert.NotNull(hackAdmin);
+        var adminRoles = await userManager.GetRolesAsync(hackAdmin);
+        Assert.Contains("User", adminRoles);
+        Assert.DoesNotContain("Admin", adminRoles);
+
+        var validStaff = await userManager.FindByNameAsync("validstaff");
+        Assert.NotNull(validStaff);
+        var staffRoles = await userManager.GetRolesAsync(validStaff);
+        Assert.Contains("User", staffRoles);
+        Assert.DoesNotContain("Staff", staffRoles);
     }
 
     [Fact]

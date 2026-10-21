@@ -16,6 +16,8 @@ class AttendanceResult {
     this.statusCode = 200,
   });
 
+  bool get isConflict => statusCode == 409;
+
   @override
   String toString() => 'AttendanceResult(success: $success, message: $message, statusCode: $statusCode)';
 }
@@ -85,7 +87,9 @@ class AttendanceService {
           statusCode: response.statusCode,
         );
       } else {
-        String errorMsg = 'Chấm công thất bại (Mã lỗi ${response.statusCode})';
+        String errorMsg = response.statusCode == 409
+            ? 'Xung đột ca làm (409 Conflict): Bạn đã thực hiện check-in trong vòng 5 phút trước hoặc ca làm đã tồn tại.'
+            : 'Chấm công thất bại (Mã lỗi ${response.statusCode})';
         try {
           final decoded = jsonDecode(utf8.decode(response.bodyBytes));
           if (decoded is Map<String, dynamic>) {
@@ -238,6 +242,201 @@ class AttendanceService {
       }
     } catch (e) {
       rethrow;
+    }
+  }
+
+  /// Lấy mã QR chấm công đang hiệu lực hoặc sinh mã chuẩn có tiền tố HUTECH_ATTENDANCE_QR_
+  Future<String> getActiveQrCode() async {
+    try {
+      final response = await _apiClient.get('Attendance/active-qr');
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map<String, dynamic>) {
+          final token = decoded['qrToken'] ?? decoded['token'] ?? decoded['data'];
+          if (token != null && token.toString().trim().isNotEmpty) {
+            return token.toString().trim();
+          }
+        } else if (decoded is String && decoded.trim().isNotEmpty) {
+          return decoded.trim();
+        }
+      }
+    } catch (_) {
+      // Bỏ qua lỗi kết nối, sinh mã chuẩn bên dưới
+    }
+    // Chuẩn prefix HUTECH_ATTENDANCE_QR_ kèm thời gian hiện tại
+    final now = DateTime.now();
+    final timeStamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+    return 'HUTECH_ATTENDANCE_QR_CAMPUS_E_$timeStamp';
+  }
+
+  /// Admin lấy danh sách nhân viên: GET /api/Admin/employees
+  Future<List<Employee>> getEmployees() async {
+    try {
+      final response = await _apiClient.get('Admin/employees');
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        List<dynamic> list = [];
+        if (decoded is List) {
+          list = decoded;
+        } else if (decoded is Map<String, dynamic>) {
+          if (decoded['data'] is List) {
+            list = decoded['data'];
+          } else if (decoded['employees'] is List) {
+            list = decoded['employees'];
+          } else if (decoded['users'] is List) {
+            list = decoded['users'];
+          }
+        }
+        return list
+            .whereType<Map<String, dynamic>>()
+            .map((item) => Employee.fromJson(item))
+            .toList();
+      } else {
+        throw Exception('Không thể tải danh sách nhân viên (Mã lỗi: ${response.statusCode})');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Admin cập nhật vai trò người dùng: POST /api/Admin/employees/{id}/role
+  Future<AttendanceResult> updateEmployeeRole(String employeeId, String newRole) async {
+    try {
+      final response = await _apiClient.post(
+        'Admin/employees/$employeeId/role',
+        body: {'role': newRole},
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return AttendanceResult(
+          success: true,
+          message: 'Đã cập nhật vai trò thành "$newRole" thành công!',
+          statusCode: response.statusCode,
+        );
+      } else {
+        String msg = 'Cập nhật vai trò thất bại (mã ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            msg = decoded['message'] ?? decoded['error'] ?? msg;
+          }
+        } catch (_) {}
+        return AttendanceResult(
+          success: false,
+          message: msg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi máy chủ khi cập nhật vai trò: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Admin điều chỉnh bản ghi chấm công: PUT /api/Attendance/{id} (Bắt buộc có reason)
+  Future<AttendanceResult> updateAttendance(
+    dynamic id, {
+    DateTime? checkInTime,
+    DateTime? checkOutTime,
+    String? status,
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lý do điều chỉnh (reason) là bắt buộc.',
+        statusCode: 400,
+      );
+    }
+
+    final Map<String, dynamic> body = {
+      'id': id,
+      'reason': reason.trim(),
+    };
+    if (checkInTime != null) body['checkInTime'] = checkInTime.toIso8601String();
+    if (checkOutTime != null) body['checkOutTime'] = checkOutTime.toIso8601String();
+    if (status != null) body['status'] = status;
+
+    try {
+      final response = await _apiClient.put('Attendance/$id', body: body);
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return AttendanceResult(
+          success: true,
+          message: 'Điều chỉnh bản ghi chấm công #$id thành công!',
+          statusCode: response.statusCode,
+        );
+      } else {
+        String msg = 'Điều chỉnh thất bại (Mã lỗi ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            msg = decoded['message'] ?? decoded['error'] ?? msg;
+          }
+        } catch (_) {}
+        return AttendanceResult(
+          success: false,
+          message: msg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi khi gửi điều chỉnh chấm công: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
+  /// Admin xóa bản ghi chấm công: DELETE /api/Attendance/{id} (Bắt buộc có reason)
+  Future<AttendanceResult> deleteAttendance(
+    dynamic id, {
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lý do xóa bản ghi (reason) là bắt buộc.',
+        statusCode: 400,
+      );
+    }
+
+    try {
+      final response = await _apiClient.delete(
+        'Attendance/$id?reason=${Uri.encodeComponent(reason.trim())}',
+        body: {'reason': reason.trim()},
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return AttendanceResult(
+          success: true,
+          message: 'Đã xóa bản ghi chấm công #$id thành công!',
+          statusCode: response.statusCode,
+        );
+      } else {
+        String msg = 'Xóa bản ghi thất bại (Mã lỗi ${response.statusCode})';
+        try {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+          if (decoded is Map<String, dynamic>) {
+            msg = decoded['message'] ?? decoded['error'] ?? msg;
+          }
+        } catch (_) {}
+        return AttendanceResult(
+          success: false,
+          message: msg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return AttendanceResult(
+        success: false,
+        message: 'Lỗi khi gửi yêu cầu xóa bản ghi: $e',
+        statusCode: 500,
+      );
     }
   }
 }

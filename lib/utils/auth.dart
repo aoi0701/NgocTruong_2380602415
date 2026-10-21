@@ -82,6 +82,86 @@ class Auth {
   /// Đăng xuất và dọn dẹp sạch sẽ phiên lưu trữ
   static Future<void> logout() async {
     await _authService.logout();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('jwt_token');
+    await prefs.remove('user_role');
+    await prefs.remove('user_name');
+  }
+
+  /// Gửi đăng ký mẫu khuôn mặt lên máy chủ: POST /api/Attendance/enroll-face
+  static Future<Map<String, dynamic>> enrollFace({
+    required String username,
+    required Map<String, dynamic> features,
+  }) async {
+    try {
+      final response = await _apiClient.enrollFace(
+        username: username,
+        features: features,
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final dynamic decoded = jsonDecode(response.body);
+        return {
+          'success': true,
+          'statusCode': response.statusCode,
+          'message': (decoded is Map && decoded['message'] != null)
+              ? decoded['message'].toString()
+              : 'Đăng ký mẫu khuôn mặt thành công.',
+        };
+      } else {
+        String msg = 'Không thể đồng bộ mẫu lên máy chủ (${response.statusCode})';
+        try {
+          final dynamic decoded = jsonDecode(response.body);
+          if (decoded is Map && decoded['message'] != null) {
+            msg = decoded['message'].toString();
+          }
+        } catch (_) {}
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': msg,
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'statusCode': 0,
+        'message': 'Lỗi kết nối khi gửi mẫu khuôn mặt: $e',
+      };
+    }
+  }
+
+  /// Tải mẫu khuôn mặt từ máy chủ: GET /api/Attendance/face-profile/{username}
+  static Future<Map<String, dynamic>> getFaceProfile(String username) async {
+    try {
+      final response = await _apiClient.getFaceProfile(username);
+      if (response.statusCode == 200) {
+        final dynamic decoded = jsonDecode(response.body);
+        return {
+          'success': true,
+          'statusCode': 200,
+          'data': decoded,
+        };
+      } else {
+        String msg = 'Không tìm thấy mẫu khuôn mặt (${response.statusCode})';
+        try {
+          final dynamic decoded = jsonDecode(response.body);
+          if (decoded is Map && decoded['message'] != null) {
+            msg = decoded['message'].toString();
+          }
+        } catch (_) {}
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': msg,
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'statusCode': 0,
+        'message': 'Lỗi kết nối khi tải mẫu khuôn mặt: $e',
+      };
+    }
   }
 
   /// Lấy JWT token đang lưu

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/attendance.dart';
 import '../services/attendance_service.dart';
@@ -21,14 +22,49 @@ class _StaffScreenState extends State<StaffScreen> {
   bool _isLoadingHistory = false;
   String? _historyError;
   List<AttendanceRecord> _historyList = [];
-  AttendanceRecord? _todayRecord;
+  AttendanceRecord? _openShift; // Ca làm việc đang mở (checkOutTime == null)
+  AttendanceRecord? _todayRecord; // Bản ghi ngày hôm nay
   bool _isActionLoading = false;
+
+  Timer? _shiftTimer;
+  Duration _elapsedDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _loadStaffInfo();
     _fetchAttendanceHistory();
+  }
+
+  @override
+  void dispose() {
+    _stopShiftTimer();
+    super.dispose();
+  }
+
+  void _startShiftTimer(DateTime checkInTime) {
+    _stopShiftTimer();
+    _elapsedDuration = DateTime.now().difference(checkInTime);
+    _shiftTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _elapsedDuration = DateTime.now().difference(checkInTime);
+        });
+      }
+    });
+  }
+
+  void _stopShiftTimer() {
+    _shiftTimer?.cancel();
+    _shiftTimer = null;
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.isNegative) return '00:00:00';
+    final hours = d.inHours.toString().padLeft(2, '0');
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$hours:$minutes:$seconds';
   }
 
   Future<void> _loadStaffInfo() async {
@@ -55,24 +91,37 @@ class _StaffScreenState extends State<StaffScreen> {
         return bTime.compareTo(aTime);
       });
 
-      // Tìm bản ghi ngày hôm nay
+      // Tìm ca mở (checkOutTime == null) & bản ghi hôm nay
+      AttendanceRecord? openShift;
       AttendanceRecord? today;
       final now = DateTime.now();
+
       for (final r in records) {
-        if (r.checkInTime != null &&
+        if (openShift == null && r.isOpenShift) {
+          openShift = r;
+        }
+        if (today == null &&
+            r.checkInTime != null &&
             r.checkInTime!.year == now.year &&
             r.checkInTime!.month == now.month &&
             r.checkInTime!.day == now.day) {
           today = r;
-          break;
         }
       }
 
       setState(() {
         _historyList = records;
-        _todayRecord = today;
+        _openShift = openShift;
+        _todayRecord = today ?? openShift;
         _isLoadingHistory = false;
       });
+
+      if (openShift != null && openShift.checkInTime != null) {
+        _startShiftTimer(openShift.checkInTime!);
+      } else {
+        _stopShiftTimer();
+        _elapsedDuration = Duration.zero;
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -83,6 +132,17 @@ class _StaffScreenState extends State<StaffScreen> {
   }
 
   Future<void> _handleCheckIn() async {
+    // Nếu đã có ca mở, tuyệt đối không gửi lại
+    if (_openShift != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bạn đang trong ca trực rồi! Vui lòng Ra ca trước khi bắt đầu ca mới.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isActionLoading = true);
     try {
       final result = await AttendanceService.instance.checkIn(
@@ -108,17 +168,27 @@ class _StaffScreenState extends State<StaffScreen> {
         );
         // Tải lại lịch sử thực tế từ SQL Server
         await _fetchAttendanceHistory();
+      } else if (result.isConflict) {
+        _showConflictDialog(result.message);
       } else {
         _showErrorDialog('Check-in thất bại', result.message);
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isActionLoading = false);
-      _showErrorDialog('Lỗi kết nối', e.toString());
+      _showErrorDialog(
+        'Lỗi kết nối máy chủ',
+        'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng của bạn.\nChi tiết: $e',
+      );
     }
   }
 
   Future<void> _handleCheckOut() async {
+    if (_openShift == null) {
+      _showNotCheckedInDialog();
+      return;
+    }
+
     setState(() => _isActionLoading = true);
     try {
       final result = await AttendanceService.instance.checkOut(
@@ -150,8 +220,78 @@ class _StaffScreenState extends State<StaffScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isActionLoading = false);
-      _showErrorDialog('Lỗi kết nối', e.toString());
+      _showErrorDialog(
+        'Lỗi kết nối máy chủ',
+        'Không thể kết nối đến máy chủ khi check-out.\nChi tiết: $e',
+      );
     }
+  }
+
+  void _showNotCheckedInDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Chưa vào ca làm việc'),
+          ],
+        ),
+        content: const Text(
+          'Bạn chưa vào ca làm việc nên không thể thực hiện Ra ca (Check-out).\n\n'
+          'Vui lòng bấm nút "Vào ca (Check-in)" để bắt đầu ca trực mới.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đã hiểu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConflictDialog(String message) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.amber),
+            SizedBox(width: 8),
+            Text('Xung đột ca làm (409)'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 12),
+            const Text(
+              'Quy định hệ thống: Mỗi nhân viên chỉ được duy trì 1 ca làm việc mở tại một thời điểm, '
+              'hoặc cần đợi 5 phút giữa các lần chấm công để tránh bản ghi trùng lặp.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _fetchAttendanceHistory();
+            },
+            icon: const Icon(Icons.sync, size: 16),
+            label: const Text('Tải lại trạng thái'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorDialog(String title, String message) {
@@ -249,10 +389,10 @@ class _StaffScreenState extends State<StaffScreen> {
             children: [
               // Banner chào mừng nhân viên
               _buildWelcomeBanner(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
 
-              // Khối Thông tin ca làm việc hôm nay & Nút Check-in / Check-out
-              _buildTodayShiftCard(),
+              // Khối Thông tin ca làm việc & Nút Check-in / Check-out (Single Open Shift)
+              _buildShiftControlCard(),
               const SizedBox(height: 24),
 
               // Khối Lịch sử chấm công thực tế từ SQL Server
@@ -428,50 +568,49 @@ class _StaffScreenState extends State<StaffScreen> {
     );
   }
 
-  Widget _buildTodayShiftCard() {
+  /// Khối Ca làm việc với quy tắc Single Open Shift
+  Widget _buildShiftControlCard() {
     final now = DateTime.now();
-    final dateStr = 'Hôm nay: Ngày ${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+    final dateStr = 'Ngày ${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
-    final checkInStr = _todayRecord?.checkInTime != null
-        ? '${_todayRecord!.checkInTime!.hour.toString().padLeft(2, '0')}:${_todayRecord!.checkInTime!.minute.toString().padLeft(2, '0')}:${_todayRecord!.checkInTime!.second.toString().padLeft(2, '0')}'
+    final bool hasOpenShift = _openShift != null;
+    final activeRecord = _openShift ?? _todayRecord;
+
+    final checkInStr = activeRecord?.checkInTime != null
+        ? '${activeRecord!.checkInTime!.hour.toString().padLeft(2, '0')}:${activeRecord.checkInTime!.minute.toString().padLeft(2, '0')}:${activeRecord.checkInTime!.second.toString().padLeft(2, '0')}'
         : '--:--';
 
-    final checkOutStr = _todayRecord?.checkOutTime != null
-        ? '${_todayRecord!.checkOutTime!.hour.toString().padLeft(2, '0')}:${_todayRecord!.checkOutTime!.minute.toString().padLeft(2, '0')}:${_todayRecord!.checkOutTime!.second.toString().padLeft(2, '0')}'
-        : '--:--';
-
-    final durationStr = _todayRecord != null ? _todayRecord!.durationText : 'Chưa có dữ liệu';
-
-    final bool hasCheckedIn = _todayRecord?.checkInTime != null;
-    final bool hasCheckedOut = _todayRecord?.checkOutTime != null;
-
-    Color statusColor = Colors.grey;
-    String statusLabel = 'Chưa vào ca';
-    if (hasCheckedIn && !hasCheckedOut) {
-      statusColor = Colors.green;
-      statusLabel = 'Đang trong ca trực';
-    } else if (hasCheckedIn && hasCheckedOut) {
-      statusColor = Colors.blue;
-      statusLabel = 'Đã hoàn thành ca';
-    }
+    final checkOutStr = activeRecord?.checkOutTime != null
+        ? '${activeRecord!.checkOutTime!.hour.toString().padLeft(2, '0')}:${activeRecord.checkOutTime!.minute.toString().padLeft(2, '0')}:${activeRecord.checkOutTime!.second.toString().padLeft(2, '0')}'
+        : (hasOpenShift ? 'Đang trong ca' : '--:--');
 
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: hasOpenShift ? 4 : 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: hasOpenShift
+            ? BorderSide(color: Colors.green[600]!, width: 2)
+            : BorderSide(color: Colors.grey[300]!, width: 1),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(18.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Tiêu đề trạng thái ca
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.access_time_filled, color: Colors.teal[800], size: 22),
+                    Icon(
+                      hasOpenShift ? Icons.radio_button_checked : Icons.access_time_filled,
+                      color: hasOpenShift ? Colors.green[700] : Colors.teal[800],
+                      size: 22,
+                    ),
                     const SizedBox(width: 8),
                     const Text(
-                      'Ca làm việc hôm nay',
+                      'Trạng thái ca làm việc',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -479,14 +618,26 @@ class _StaffScreenState extends State<StaffScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
+                    color: hasOpenShift
+                        ? Colors.green.withValues(alpha: 0.15)
+                        : (activeRecord?.isCompleted == true
+                            ? Colors.blue.withValues(alpha: 0.15)
+                            : Colors.grey.withValues(alpha: 0.15)),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: statusColor),
+                    border: Border.all(
+                      color: hasOpenShift
+                          ? Colors.green[700]!
+                          : (activeRecord?.isCompleted == true ? Colors.blue[700]! : Colors.grey),
+                    ),
                   ),
                   child: Text(
-                    statusLabel,
+                    hasOpenShift
+                        ? '🟢 ĐANG TRONG CA TRỰC'
+                        : (activeRecord?.isCompleted == true ? 'ĐÃ HOÀN THÀNH CA' : 'CHƯA VÀO CA'),
                     style: TextStyle(
-                      color: statusColor,
+                      color: hasOpenShift
+                          ? Colors.green[800]
+                          : (activeRecord?.isCompleted == true ? Colors.blue[800] : Colors.grey[700]),
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -499,7 +650,59 @@ class _StaffScreenState extends State<StaffScreen> {
               dateStr,
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
             ),
-            const Divider(height: 24),
+            const Divider(height: 22),
+
+            // NỔI BẬT NẾU ĐANG TRONG CA TRỰC: BỘ ĐẾM THỜI GIAN LÀM VIỆC THỜI GIAN THỰC
+            if (hasOpenShift) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.green[50]!, Colors.teal[50]!],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green[300]!),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.timer_outlined, color: Colors.green[800], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'THỜI GIAN LÀM VIỆC HIỆN TẠI',
+                          style: TextStyle(
+                            color: Colors.green[900],
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatDuration(_elapsedDuration),
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.green[900],
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Giờ vào ca: ${_openShift!.formattedCheckIn}',
+                      style: TextStyle(color: Colors.teal[800], fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             // Thông số ca làm việc
             Row(
@@ -524,8 +727,10 @@ class _StaffScreenState extends State<StaffScreen> {
                 Container(width: 1, height: 40, color: Colors.grey[300]),
                 Expanded(
                   child: _buildShiftMetric(
-                    title: 'Tổng giờ làm',
-                    value: durationStr,
+                    title: 'Tổng thời gian',
+                    value: hasOpenShift
+                        ? _formatDuration(_elapsedDuration)
+                        : (activeRecord?.durationText ?? '--'),
                     icon: Icons.timer,
                     color: Colors.blue,
                   ),
@@ -534,7 +739,7 @@ class _StaffScreenState extends State<StaffScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Nút bấm Check-in và Check-out
+            // Nút bấm Check-in và Check-out (Single Open Shift Control)
             if (_isActionLoading)
               const Center(
                 child: Padding(
@@ -543,33 +748,54 @@ class _StaffScreenState extends State<StaffScreen> {
                 ),
               )
             else
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _handleCheckIn,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  Row(
+                    children: [
+                      // Nút Vào ca: KÍCH HOẠT khi CHƯA có ca mở, VÔ HIỆU HÓA khi ĐANG có ca mở
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: hasOpenShift ? null : _handleCheckIn,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green[700],
+                            disabledBackgroundColor: Colors.grey[300],
+                            foregroundColor: Colors.white,
+                            disabledForegroundColor: Colors.grey[600],
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.login_rounded, size: 18),
+                          label: const Text('Vào ca (Check-in)', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
                       ),
-                      icon: const Icon(Icons.login_rounded, size: 18),
-                      label: const Text('Vào ca (Check-in)'),
-                    ),
+                      const SizedBox(width: 12),
+                      // Nút Ra ca: KÍCH HOẠT khi ĐANG có ca mở, VÔ HIỆU HÓA khi CHƯA có ca mở
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: hasOpenShift ? _handleCheckOut : _showNotCheckedInDialog,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: hasOpenShift ? Colors.orange[800] : Colors.grey[400],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.logout_rounded, size: 18),
+                          label: const Text('Ra ca (Check-out)', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _handleCheckOut,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange[800],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      icon: const Icon(Icons.logout_rounded, size: 18),
-                      label: const Text('Ra ca (Check-out)'),
+                  const SizedBox(height: 8),
+                  Text(
+                    hasOpenShift
+                        ? 'ℹ️ Bạn đang trong ca trực. Nút Vào ca đã vô hiệu hóa để ngăn tạo ca trùng lặp.'
+                        : 'ℹ️ Bạn chưa có ca mở. Hãy bấm "Vào ca" để bắt đầu ghi nhận thời gian làm việc.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: hasOpenShift ? Colors.green[800] : Colors.grey[600],
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ],

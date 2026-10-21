@@ -125,4 +125,26 @@ class ApiClient {
         .timeout(timeout);
     return await _processResponse(response);
   }
+
+  /// Gửi đăng ký mẫu khuôn mặt lên máy chủ: POST /api/Attendance/enroll-face
+  Future<http.Response> enrollFace({
+    required String username,
+    required Map<String, dynamic> features,
+  }) async {
+    final String vectorJson = jsonEncode(features);
+    return await post(
+      'Attendance/enroll-face',
+      body: {
+        'username': username.trim(),
+        'features': features,
+        'faceVectorJson': vectorJson,
+        'enrolledAt': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
+  /// Tải mẫu khuôn mặt từ máy chủ: GET /api/Attendance/face-profile/{username}
+  Future<http.Response> getFaceProfile(String username) async {
+    return await get('Attendance/face-profile/${Uri.encodeComponent(username.trim())}');
+  }
 }

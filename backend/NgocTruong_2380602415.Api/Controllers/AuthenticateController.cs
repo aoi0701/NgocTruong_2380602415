@@ -22,17 +22,20 @@ public class AuthenticateController : ControllerBase
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IConfiguration _configuration;
     private readonly IOtpService _otpService;
+    private readonly ILogger<AuthenticateController> _logger;
 
     public AuthenticateController(
         UserManager<User> userManager,
         RoleManager<IdentityRole> roleManager,
         IConfiguration configuration,
-        IOtpService otpService)
+        IOtpService otpService,
+        ILogger<AuthenticateController> logger)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _configuration = configuration;
         _otpService = otpService;
+        _logger = logger;
     }
 
     [HttpPost("request-otp")]
@@ -62,7 +65,19 @@ public class AuthenticateController : ControllerBase
         }
 
         var email = string.IsNullOrWhiteSpace(user.Email) ? $"{user.UserName}@example.com" : user.Email;
-        await _otpService.GenerateAndSendOtpAsync(user.UserName!, email);
+        try
+        {
+            await _otpService.GenerateAndSendOtpAsync(user.UserName!, email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi gửi email OTP cho tài khoản '{Username}'", user.UserName);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                status = false,
+                message = "Không thể gửi email OTP: Dịch vụ email chưa được cấu hình hoặc gặp sự cố kết nối SMTP. Vui lòng kiểm tra cấu hình SmtpSettings trong appsettings.json."
+            });
+        }
 
         // KHÔNG trả mã OTP trong JSON response (chỉ trả message thông báo đã gửi)
         return Ok(new
@@ -78,17 +93,6 @@ public class AuthenticateController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
-
-        // Bỏ cho phép tự đăng ký vai trò Admin. Nếu client gửi Admin, bắt buộc từ chối
-        if (!string.IsNullOrWhiteSpace(model.Role) &&
-            string.Equals(model.Role.Trim(), "Admin", StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest(new
-            {
-                Status = false,
-                Message = "Không được phép tự đăng ký tài khoản với vai trò Admin."
-            });
-        }
 
         var userExists = await _userManager.FindByNameAsync(model.Username);
         if (userExists != null)
@@ -117,13 +121,20 @@ public class AuthenticateController : ControllerBase
             });
         }
 
-        // Chỉ cho phép đăng ký Staff hoặc User (mặc định là User)
-        var role = string.Equals(model.Role?.Trim(), "Staff", StringComparison.OrdinalIgnoreCase) ? "Staff" : "User";
+        // Đăng ký công khai chỉ cấp role User.
+        // Chặn tuyệt đối việc đăng ký tự cấp Admin hoặc Staff (nếu client gửi Admin hoặc Staff, bắt buộc đặt là User)
+        const string role = "User";
         if (!await _roleManager.RoleExistsAsync(role))
         {
             await _roleManager.CreateAsync(new IdentityRole(role));
         }
         await _userManager.AddToRoleAsync(user, role);
+
+        if (!string.IsNullOrWhiteSpace(model.Role) && !string.Equals(model.Role.Trim(), "User", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Tài khoản {Username} đã yêu cầu vai trò '{RequestedRole}', hệ thống đã ép về vai trò an toàn '{Role}'.",
+                model.Username, model.Role, role);
+        }
 
         return Ok(new
         {

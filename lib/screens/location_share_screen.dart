@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/attendance_service.dart';
 
 class LocationShareScreen extends StatefulWidget {
@@ -14,10 +15,10 @@ class LocationShareScreen extends StatefulWidget {
 }
 
 class _LocationShareScreenState extends State<LocationShareScreen> {
-  // Tọa độ chuẩn của Trường Đại học HUTECH (Cơ sở Khu Công Nghệ Cao)
-  static const double companyLat = 10.8550;
-  static const double companyLng = 106.7854;
-  static const String companyName = 'Trường ĐH HUTECH (Trụ sở / Điểm chấm công)';
+  // Tọa độ chuẩn của Trường Đại học HUTECH Campus E1 (Khu Công nghệ cao TP.HCM)
+  static const double companyLat = 10.8552;
+  static const double companyLng = 106.7856;
+  static const String companyName = 'HUTECH Campus E1 (Khu Công Nghệ Cao)';
 
   final MapController _mapController = MapController();
   Position? _currentPosition;
@@ -130,7 +131,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
     }
   }
 
-  void _shareLocation() {
+  Future<void> _shareLocation() async {
     if (_currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -140,12 +141,97 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
       );
       return;
     }
-    final url = 'https://www.google.com/maps/search/?api=1&query=${_currentPosition!.latitude},${_currentPosition!.longitude}';
-    Clipboard.setData(ClipboardData(text: url));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đã sao chép liên kết vị trí Google Maps vào bộ nhớ tạm!'),
-        backgroundColor: Colors.teal,
+
+    final lat = _currentPosition!.latitude;
+    final lng = _currentPosition!.longitude;
+    final mapUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+    final shareText = '📍 Vị trí GPS của tôi tại HUTECH: $mapUrl\nĐịa chỉ: $_address';
+
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Chia sẻ Vị trí GPS',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tọa độ: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.map, color: Colors.white),
+                ),
+                title: const Text('Mở trên ứng dụng Google Maps'),
+                subtitle: const Text('Mở chỉ đường và hiển thị vị trí trên bản đồ Google'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final uri = Uri.parse(mapUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } else {
+                    Clipboard.setData(ClipboardData(text: mapUrl));
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Không thể mở ứng dụng bản đồ, đã sao chép link')),
+                      );
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.teal,
+                  child: Icon(Icons.copy, color: Colors.white),
+                ),
+                title: const Text('Sao chép liên kết Google Maps'),
+                subtitle: const Text('Lưu link bản đồ vào bộ nhớ tạm'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(ClipboardData(text: mapUrl));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Đã sao chép liên kết Google Maps vào bộ nhớ tạm!'),
+                      backgroundColor: Colors.teal,
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.deepOrange,
+                  child: Icon(Icons.share, color: Colors.white),
+                ),
+                title: const Text('Sao chép thông tin chi tiết vị trí'),
+                subtitle: const Text('Bao gồm địa chỉ, tọa độ và link liên kết'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(ClipboardData(text: shareText));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Đã sao chép thông tin vị trí vào bộ nhớ tạm!'),
+                      backgroundColor: Colors.deepOrange,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -172,7 +258,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
           longitude: _currentPosition!.longitude,
           locationName: _address,
           notes: _distanceToCompany != null
-              ? 'GPS cách trụ sở ${_distanceToCompany!.toStringAsFixed(1)}m'
+              ? 'GPS cách HUTECH Campus E1 ${_distanceToCompany!.toStringAsFixed(1)}m'
               : 'GPS thực tế',
         );
       } else {
@@ -182,7 +268,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
           longitude: _currentPosition!.longitude,
           locationName: _address,
           notes: _distanceToCompany != null
-              ? 'GPS cách trụ sở ${_distanceToCompany!.toStringAsFixed(1)}m'
+              ? 'GPS cách HUTECH Campus E1 ${_distanceToCompany!.toStringAsFixed(1)}m'
               : 'GPS thực tế',
         );
       }
@@ -221,7 +307,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
               Text(
                 result.success
                     ? '✅ Đã lưu bản ghi chấm công vào máy chủ SQL Server.'
-                    : '⚠️ Máy chủ từ chối bản ghi chấm công. Vui lòng kiểm tra lại.',
+                    : '⚠️ Phản hồi từ backend (Mã ${result.statusCode}): ${result.message}',
                 style: TextStyle(
                   color: result.success ? Colors.green[800] : Colors.red[800],
                   fontSize: 12,
@@ -280,7 +366,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
               const SizedBox(height: 8),
               Text(
                 'Tọa độ: ${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}\n'
-                '${_distanceToCompany != null ? 'Khoảng cách: ${_distanceToCompany!.toStringAsFixed(1)}m tới trụ sở' : ''}',
+                '${_distanceToCompany != null ? 'Khoảng cách: ${_distanceToCompany!.toStringAsFixed(1)}m tới Campus E1' : ''}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
@@ -358,7 +444,7 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
                     ),
                     MarkerLayer(
                       markers: [
-                        // Ghim vị trí Trụ sở
+                        // Ghim vị trí Trụ sở Campus E1
                         const Marker(
                           point: LatLng(companyLat, companyLng),
                           width: 50,
@@ -439,9 +525,9 @@ class _LocationShareScreenState extends State<LocationShareScreen> {
                         const SizedBox(height: 8),
                         if (_distanceToCompany != null)
                           Text(
-                            'Khoảng cách đến cơ sở: ${_distanceToCompany!.toStringAsFixed(1)} m',
+                            'Khoảng cách đến cơ sở: ${_distanceToCompany!.toStringAsFixed(1)} m (Tối đa 500m)',
                             style: TextStyle(
-                              color: _distanceToCompany! <= 300 ? Colors.green[800] : Colors.orange[900],
+                              color: _distanceToCompany! <= 500 ? Colors.green[800] : Colors.orange[900],
                               fontWeight: FontWeight.w600,
                             ),
                           ),

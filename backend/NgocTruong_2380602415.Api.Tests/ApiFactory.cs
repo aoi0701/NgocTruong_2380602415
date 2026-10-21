@@ -13,8 +13,28 @@ using NgocTruong_2380602415.Api.Services;
 
 namespace NgocTruong_2380602415.Api.Tests;
 
+public class TestEmailService : IEmailService
+{
+    public string? LastSentOtp { get; private set; }
+    public Task SendOtpEmailAsync(string toEmail, string username, string otpCode, CancellationToken cancellationToken = default)
+    {
+        LastSentOtp = otpCode;
+        return Task.CompletedTask;
+    }
+}
+
+public class FailingEmailService : IEmailService
+{
+    public Task SendOtpEmailAsync(string toEmail, string username, string otpCode, CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("Dịch vụ email chưa được cấu hình SMTP. Vui lòng kiểm tra cấu hình SmtpSettings trong appsettings.json.");
+    }
+}
+
 internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Program>
 {
+    public bool SimulateEmailFailure { get; set; } = false;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
@@ -37,6 +57,16 @@ internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Pr
                 options.UseSqlite($"Data Source={databasePath};Pooling=False");
                 options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
             });
+
+            services.RemoveAll<IEmailService>();
+            if (SimulateEmailFailure)
+            {
+                services.AddSingleton<IEmailService, FailingEmailService>();
+            }
+            else
+            {
+                services.AddSingleton<IEmailService, TestEmailService>();
+            }
         });
     }
 
@@ -58,7 +88,11 @@ internal sealed class ApiFactory(string databasePath) : WebApplicationFactory<Pr
 internal sealed class TestDatabase : IDisposable
 {
     public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"ngoctruong-api-{Guid.NewGuid():N}.db");
-    public ApiFactory Open() => new(Path);
+    public ApiFactory Open(bool simulateEmailFailure = false)
+    {
+        var factory = new ApiFactory(Path) { SimulateEmailFailure = simulateEmailFailure };
+        return factory;
+    }
     public void Dispose()
     {
         foreach (var path in new[] { Path, Path + "-shm", Path + "-wal" })

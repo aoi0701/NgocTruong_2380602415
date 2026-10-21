@@ -119,11 +119,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
-    // 3. Nghiêm cấm chọn hoặc gửi vai trò Admin qua form đăng ký công khai
-    if (role != 'User' && role != 'Staff') {
+    // 3. Nghiêm cấm chọn hoặc gửi vai trò Admin/Staff qua form đăng ký công khai
+    if (role != 'User') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vai trò không hợp lệ. Chỉ chấp nhận User hoặc Staff.'),
+          content: Text('Form đăng ký công khai chỉ áp dụng cho vai trò User. Tài khoản nhân viên được cấp quyền quản trị nội bộ.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -338,41 +338,81 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Vai trò: Chỉ cho phép User hoặc Staff (Gỡ bỏ hoàn toàn tùy chọn Admin)
-                DropdownButtonFormField<String>(
-                  value: ['User', 'Staff'].contains(_roleController.text)
-                      ? _roleController.text
-                      : 'User',
-                  decoration: InputDecoration(
-                    labelText: 'Vai trò (Role)',
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
+                // Vai trò: Cố định mặc định là User cho đăng ký công khai
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'User',
-                      child: Text('Khách hàng / Sinh viên (User)'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Staff',
-                      child: Text('Nhân viên vận hành (Staff)'),
-                    ),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() {
-                        _roleController.text = val;
-                      });
-                    }
-                  },
+                  child: Row(
+                    children: [
+                      Icon(Icons.badge_outlined, color: Colors.blue[700], size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Vai trò tài khoản (Mặc định)',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Khách hàng / Sinh viên (User)',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue[900],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Cố định',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Ghi chú quyền nội bộ: "Tài khoản nhân viên được cấp quyền quản trị nội bộ"
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber[600]!.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Colors.amber[800], size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Tài khoản nhân viên được cấp quyền quản trị nội bộ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.amber[900],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 24),
 

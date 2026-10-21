@@ -12,6 +12,7 @@ public class ApplicationDbContext : IdentityDbContext<User>
     public DbSet<Post> Posts { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
     public DbSet<AttendanceRecord> AttendanceRecords { get; set; } = null!;
+    public DbSet<UserFaceProfile> UserFaceProfiles { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -59,6 +60,19 @@ public class ApplicationDbContext : IdentityDbContext<User>
             entity.HasOne(a => a.User)
                   .WithMany()
                   .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<UserFaceProfile>(entity =>
+        {
+            entity.ToTable("UserFaceProfiles", "dbo");
+            entity.HasKey(f => f.Id);
+            entity.Property(f => f.UserId).IsRequired();
+            entity.Property(f => f.FaceVectorJson).IsRequired();
+            entity.Property(f => f.UpdatedBy).HasMaxLength(100);
+            entity.HasOne(f => f.User)
+                  .WithMany()
+                  .HasForeignKey(f => f.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

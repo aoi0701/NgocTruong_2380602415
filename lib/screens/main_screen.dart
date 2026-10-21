@@ -6,6 +6,8 @@ import 'feed_screen.dart';
 import '../HomeScreen.dart';
 import 'biometric_qr_screen.dart';
 import 'location_share_screen.dart';
+import 'admin_screen.dart';
+import 'staff_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -148,6 +150,9 @@ class _MainScreenState extends State<MainScreen> {
 
   // Giao diện Trang chủ Dashboard với các card dẫn tới MarketScreen, FeedScreen và HomeScreen
   Widget _buildDashboardHome() {
+    final bool isAdmin = _role.trim().toUpperCase() == 'ADMIN';
+    final bool isStaff = _role.trim().toUpperCase() == 'STAFF';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -210,6 +215,40 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
           const SizedBox(height: 24),
+
+          // Lối tắt quản trị đặc quyền nếu là Admin hoặc Staff
+          if (isAdmin) ...[
+            _buildFeatureCard(
+              title: 'Admin Dashboard (Quản trị viên)',
+              subtitle: 'Quản lý toàn bộ danh mục sản phẩm, duyệt ca chấm công và phân quyền nhân viên.',
+              icon: Icons.admin_panel_settings_rounded,
+              color: Colors.deepPurple,
+              buttonText: 'Mở Admin Dashboard',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AdminScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (isStaff) ...[
+            _buildFeatureCard(
+              title: 'Dashboard Nhân Viên (Staff)',
+              subtitle: 'Giao diện quản lý ca làm việc, xem trạng thái đang trực và lịch sử chấm công.',
+              icon: Icons.badge_rounded,
+              color: Colors.teal,
+              buttonText: 'Mở Dashboard Nhân Viên',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const StaffScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
 
           const Text(
             'Chức năng chính',
