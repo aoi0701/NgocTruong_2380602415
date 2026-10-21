@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:qr_flutter/qr_flutter.dart';
 import '../config/config_url.dart';
 import '../models/productPost.dart';
 import '../services/api_client.dart';
+import 'biometric_qr_screen.dart';
 
 class MarketScreen extends StatefulWidget {
   const MarketScreen({super.key});
@@ -210,6 +212,14 @@ class _MarketScreenState extends State<MarketScreen> {
           TextButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
+              _showProductQrCodeDialog(post);
+            },
+            icon: const Icon(Icons.qr_code, color: Colors.purple),
+            label: const Text('Mã QR'),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
               _showEditProductDialog(post);
             },
             icon: const Icon(Icons.edit, color: Colors.blue),
@@ -223,6 +233,58 @@ class _MarketScreenState extends State<MarketScreen> {
             icon: const Icon(Icons.delete, color: Colors.red),
             label: const Text('Xóa', style: TextStyle(color: Colors.red)),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Chức năng: Xem mã QR nhận diện sản phẩm ---
+  void _showProductQrCodeDialog(productPost post) {
+    final qrData = 'PRODUCT:${post.id}';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.qr_code_2_rounded, color: Colors.purple),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Mã QR: ${post.name ?? "Sản phẩm"}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: QrImageView(
+                data: qrData,
+                version: QrVersions.auto,
+                size: 200.0,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Mã định danh: $qrData',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.purple),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Quét mã này bằng chức năng Nhận diện QR của ứng dụng để mở trực tiếp chi tiết sản phẩm.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Đóng'),
@@ -621,6 +683,16 @@ class _MarketScreenState extends State<MarketScreen> {
       appBar: AppBar(
         title: const Text('Market Screen'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Quét nhận diện mã QR',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.pin),
             tooltip: 'Tìm theo ID',

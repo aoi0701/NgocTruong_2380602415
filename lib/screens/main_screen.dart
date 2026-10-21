@@ -4,6 +4,7 @@ import 'login_screen.dart';
 import 'market_screen.dart';
 import 'feed_screen.dart';
 import '../HomeScreen.dart';
+import 'biometric_qr_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -256,6 +257,22 @@ class _MainScreenState extends State<MainScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const HomeScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // Nút dẫn tới Nhận diện mã QR & Sinh trắc học (Câu 5)
+          _buildFeatureCard(
+            title: 'Nhận diện QR & Sinh trắc học',
+            subtitle: 'Quét nhận diện mã sản phẩm, điểm danh sinh viên HUTECH và tạo mã QR cá nhân.',
+            icon: Icons.qr_code_scanner_rounded,
+            color: Colors.purple,
+            buttonText: 'Mở Quét QR',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
               );
             },
           ),

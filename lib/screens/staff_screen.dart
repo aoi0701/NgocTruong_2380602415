@@ -4,6 +4,8 @@ import 'login_screen.dart';
 import 'market_screen.dart';
 import 'feed_screen.dart';
 import '../HomeScreen.dart';
+import 'biometric_qr_screen.dart';
+import 'location_share_screen.dart';
 
 class StaffScreen extends StatefulWidget {
   const StaffScreen({super.key});
@@ -191,6 +193,61 @@ class _StaffScreenState extends State<StaffScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const HomeScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // Card 4: Chấm công & Điểm danh QR
+            _buildFeatureCard(
+              title: 'Chấm công & Điểm danh QR',
+              subtitle: 'Quét mã QR địa điểm làm việc hoặc xác thực tọa độ GPS để chấm công ca trực nhân viên.',
+              icon: Icons.qr_code_scanner_rounded,
+              color: Colors.purple,
+              buttonText: 'Mở Quét QR Chấm công',
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  builder: (ctx) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.purple,
+                            child: Icon(Icons.qr_code_scanner, color: Colors.white),
+                          ),
+                          title: const Text('1. Quét mã QR chấm công / Thẻ nhân viên'),
+                          subtitle: const Text('Nhận diện mã điểm danh bằng camera hoặc ảnh'),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+                            );
+                          },
+                        ),
+                        ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.teal,
+                            child: Icon(Icons.location_on, color: Colors.white),
+                          ),
+                          title: const Text('2. Điểm danh định vị GPS'),
+                          subtitle: const Text('Xác thực khoảng cách tại trụ sở làm việc HUTECH'),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const LocationShareScreen()),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

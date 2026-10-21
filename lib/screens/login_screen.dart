@@ -6,6 +6,8 @@ import 'admin_screen.dart';
 import 'staff_screen.dart';
 import 'main_screen.dart';
 import 'registration_screen.dart';
+import 'biometric_qr_screen.dart';
+import 'face_auth_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -338,6 +340,75 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                   ),
+                ),
+                const SizedBox(height: 12),
+
+                // Nút Đăng nhập bằng mã QR (Thuyết trình Câu 5)
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.deepPurple[700],
+                      side: BorderSide(color: Colors.deepPurple[700]!, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.qr_code_scanner_rounded),
+                    label: const Text(
+                      'Đăng nhập bằng mã QR',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Phím tắt xác thực Sinh trắc học: Vân tay & Khuôn mặt
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.indigo[700],
+                          side: BorderSide(color: Colors.indigo[200]!),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.fingerprint, size: 20),
+                        label: const Text('Vân tay'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const FaceAuthScreen()),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.teal[700],
+                          side: BorderSide(color: Colors.teal[200]!),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.face_rounded, size: 20),
+                        label: const Text('Khuôn mặt'),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
 

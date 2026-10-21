@@ -16,6 +16,9 @@ import 'features/settings/settings_provider.dart';
 import '../screens/login_screen.dart';
 import '../screens/market_screen.dart';
 import '../screens/feed_screen.dart';
+import '../screens/biometric_qr_screen.dart';
+import '../screens/face_auth_screen.dart';
+import '../screens/location_share_screen.dart';
 
 /// Màn hình trung tâm chọn bài thực hành Tuần 6 & Tuần 7.
 class PracticeEntry extends StatefulWidget {
@@ -176,7 +179,86 @@ class _PracticeHubScreen extends StatelessWidget {
                 );
               },
             ),
+            const SizedBox(height: 12),
+
+            // Card 5: Câu 5 - Thuyết trình 3 chức năng
+            _buildActionCard(
+              context,
+              title: 'Câu 5: Nhận diện QR Code, Vân tay, Khuôn mặt & Vị trí (3.5đ)',
+              subtitle: 'Thuyết trình 3 chức năng: e. Nhận diện QR & Vân tay, a. Đăng nhập khuôn mặt (ML Kit), b. Vị trí & Điểm danh GPS.',
+              icon: Icons.stars_rounded,
+              color: Colors.pink[700]!,
+              onTap: () {
+                _showQuestion5Options(context);
+              },
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showQuestion5Options(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Chọn chức năng Câu 5 thuyết trình',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.purple,
+                  child: Icon(Icons.qr_code_scanner, color: Colors.white),
+                ),
+                title: const Text('e. Nhận diện QR Code & Cảm biến Vân tay'),
+                subtitle: const Text('Quét nhận diện mã Đăng nhập / Sản phẩm / Check-in, Tạo QR & Sinh trắc học'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const BiometricQrScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.face_rounded, color: Colors.white),
+                ),
+                title: const Text('a. Đăng nhập bằng khuôn mặt'),
+                subtitle: const Text('Nhận diện khuôn mặt thời gian thực với Google ML Kit'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const FaceAuthScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.teal,
+                  child: Icon(Icons.location_on, color: Colors.white),
+                ),
+                title: const Text('b. Chia sẻ vị trí & Điểm danh GPS'),
+                subtitle: const Text('Định vị GPS Geolocator, tính khoảng cách & bản đồ FlutterMap'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const LocationShareScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
